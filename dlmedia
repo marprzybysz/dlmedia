@@ -89,7 +89,7 @@ run_setup() {
 
     if [[ "$fmt" == "ask" ]]; then
         ask_fmt=true
-        fmt="mp3"   # pre-select audio by default when "always ask"
+        fmt="mp4"
     else
         ask_fmt=false
     fi
@@ -205,7 +205,7 @@ cli_main() {
         esac
     done
     [[ -n "$url" ]] || die "${M[err_no_url]}"
-    format="${format:-${DEFAULT_FORMAT:-mp3}}"
+    format="${format:-${DEFAULT_FORMAT:-mp4}}"
     [[ "$format" == "mp3" || "$format" == "mp4" ]] || die "${M[cli_bad_format]}"
     out="${out:-$DOWNLOAD_DIR}"
     mkdir -p "$out"
@@ -404,12 +404,14 @@ if [[ "$url" == *"list="* || "$url" == *"/playlist"* || "$url" == *"/sets/"* ]];
 fi
 
 if [[ "$ASK_FORMAT" == true ]]; then
-    format=$(dialog --title "$TITLE" --default-item "${DEFAULT_FORMAT:-mp3}" --menu "${M[format_q]}" 12 40 2 \
+    # Cursor starts on mp3 (audio first) — the user still picks; this only sets
+    # the highlighted item, not the actual default format.
+    format=$(dialog --title "$TITLE" --default-item "mp3" --menu "${M[format_q]}" 12 40 2 \
         "mp3" "${M[opt_audio]}" \
         "mp4" "${M[opt_video]}" \
         3>&1 1>&2 2>&3) || exit 0
 else
-    format="${DEFAULT_FORMAT:-mp3}"
+    format="${DEFAULT_FORMAT:-mp4}"
 fi
 
 if [[ "$format" == "mp4" ]]; then
