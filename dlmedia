@@ -403,8 +403,8 @@ fi
 
 if [[ "$ASK_FORMAT" == true ]]; then
     format=$(dialog --title "$TITLE" --default-item "${DEFAULT_FORMAT:-mp4}" --menu "${M[format_q]}" 12 40 2 \
-        "mp4" "${M[opt_video]}" \
         "mp3" "${M[opt_audio]}" \
+        "mp4" "${M[opt_video]}" \
         3>&1 1>&2 2>&3) || exit 0
 else
     format="${DEFAULT_FORMAT:-mp4}"
