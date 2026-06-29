@@ -9,16 +9,19 @@ Bash script using `dialog` for TUI interface. Downloads via `yt-dlp` (YouTube) a
 ## Usage
 
 ```bash
-./dlmedia              # interactive TUI
+./dlmedia              # interactive TUI (default)
+./dlmedia --url <URL> [--format mp3|mp4] [--quality <Q>] [--out <DIR>] [--lang pl|en]   # non-interactive CLI
 ./dlmedia --setup      # re-run config wizard
 ./dlmedia --update     # update yt-dlp
 ./dlmedia --help       # show help
+bash tests/run.sh      # run the test suite
 ```
 
 ## Dependencies
 
-Required: `dialog`, `yt-dlp`, `ffmpeg`, `python3`
-Optional: `spotdl` (for Spotify, install via `pipx install spotdl`)
+Required: `bash ≥ 4`, `python3` (always — used for i18n), `yt-dlp`, `ffmpeg`.
+TUI-only: `dialog`, `stdbuf` (GNU coreutils) — checked lazily via `require_tui`, so **CLI mode works without them** (e.g. Git Bash on Windows).
+Optional: `spotdl` (for Spotify, install via `pipx install spotdl`).
 
 ## Config
 
@@ -49,9 +52,11 @@ Single file `dlmedia` script (~400 lines). Config stored in `dlmedia.conf` next 
 
 The whole script is one file, read top to bottom:
 
-1. **Defs** — `die()`, `check_deps()`, `run_setup()`.
-2. **Config load** — defaults set as plain vars, then `dlmedia.conf` is `source`d over them (conf overrides defaults). `--update`/`--setup`/`--help` are handled here and exit. No conf → mandatory `run_setup`.
-3. **Main `while true` loop** — prompt URL → dispatch by URL pattern → download → summary screen with "Powrót" (`continue`, back to URL) or "Exit" (`exit 0`).
+1. **Defs** — `die()`, `require_tui()`, `load_lang()`, `check_deps()`, `run_setup()`, `build_yt_args()`, `cli_main()`. After the defs, a `DLMEDIA_LIB=1` hook (`[[ -n "${DLMEDIA_LIB:-}" ]] && return 0`) lets tests source the functions without running the app. `SCRIPT_DIR` uses `${BASH_SOURCE[0]}` (not `$0`) so locale loading works when sourced.
+2. **Config load** — defaults set as plain vars, then `dlmedia.conf` is `source`d over them (conf overrides defaults). Arg dispatch (`case "${1:-}"`): `--url` → `cli_main "$@"` (non-interactive, exits); `--update`/`--setup`/`--help` handled here and exit. No conf → mandatory `run_setup`.
+3. **Main `while true` loop** — `require_tui` (checks `dialog`/`stdbuf`) then prompt URL → dispatch by URL pattern → download → summary screen with "Powrót" (`continue`, back to URL) or "Exit" (`exit 0`).
+
+`cli_main` and the TUI share `build_yt_args(format, quality)` (sets the global `args` array) so the yt-dlp selector logic lives in one place. `require_tui` is called lazily (top of `run_setup`, before the main loop) — never globally — so CLI mode runs without `dialog`/`stdbuf`.
 
 URL dispatch is string-matching, not validation:
 - `*open.spotify.com*` / `*spotify.link*` → Spotify branch (spotdl); it `continue`s at its end so it never falls through to yt-dlp.
@@ -80,7 +85,7 @@ URL dispatch is string-matching, not validation:
 
 ## Verifying changes
 
-No tests / build. After editing: `bash -n dlmedia` (syntax) and `shellcheck dlmedia` if available. The TUI can't be driven non-interactively (every screen blocks on `dialog`) — reason through the branch by reading the code; manual TUI runs are the user's job.
+After editing: `bash -n dlmedia` (syntax), `shellcheck dlmedia` if available, and **`bash tests/run.sh`** (the test suite). Tests cover the non-interactive logic (`build_yt_args`, `cli_main` parsing/routing with stubbed yt-dlp/spotdl, `load_lang` + fallback, locale parity) by sourcing the script with `DLMEDIA_LIB=1`. Add a test there when you touch CLI args, the arg-builder, or i18n. The TUI itself can't be driven non-interactively (every screen blocks on `dialog`) — reason through those branches by reading the code; manual TUI runs are the user's job.
 
 After touching i18n, run the **locale parity check** (catches missing/extra/unused keys):
 ```bash
@@ -100,9 +105,9 @@ PY
 ## Planned direction
 
 The project is evolving into a multi-frontend, multilingual downloader (portfolio goal). Full plan in `~/.claude/plans/` (Polish). Phased:
-1. **Externalize locale catalog** → `locales/*.json` (done — see i18n section).
-2. **Non-interactive CLI mode** (`--url … --format mp3 --quality 320`, no `dialog`/`stdbuf`) so tools/AI/Git-Bash-on-Windows can call dlmedia without the TUI; TUI stays the default (no args).
-3. **Linux desktop integration** (`.desktop` + icon for GNOME/KDE).
+1. ✅ **Externalize locale catalog** → `locales/*.json` (done — see i18n section).
+2. ✅ **Non-interactive CLI mode** (`cli_main`: `--url … --format mp3 --quality 320`, no `dialog`/`stdbuf`) so tools/AI/Git-Bash-on-Windows can call dlmedia without the TUI; TUI stays the default (no args). Done, with `tests/run.sh`.
+3. **Linux desktop integration** (`.desktop` + icon for GNOME/KDE) — next.
 4. **Windows GUI** — separate app in **Python + Qt (PySide6)**, reads the same `locales/*.json`, bundles yt-dlp/spotdl/ffmpeg + installer + update check. (Java/Electron rejected.)
 
 The bash script stays the Linux CLI/TUI; the GUI is a separate app sharing the locale catalog and the yt-dlp/spotdl engine. Differentiator vs competitors (GDownloader, Harmoni): multilingual + localized UX. License GPL-3.0; brand protected by trademarking "DLMedia" (GPL does not protect the idea).

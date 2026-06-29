@@ -68,5 +68,7 @@
   "info_fetching": "Pobieram info o filmie...",
   "summary_yt": "Pobrano: %s | Pominięto: %s",
   "updating": "Aktualizuję yt-dlp...",
-  "help": "Użycie: dlmedia [--setup|--update|--help]"
+  "cli_bad_arg": "Nieznany argument: %s",
+  "cli_bad_format": "Format musi być mp3 lub mp4",
+  "help": "Użycie:\n  dlmedia                                            interaktywny TUI\n  dlmedia --url <URL> [--format mp3|mp4] [--quality <Q>] [--out <DIR>] [--lang pl|en]\n  dlmedia --setup | --update | --help"
 }

@@ -4,15 +4,20 @@
 # Wymagane / Required: dialog, yt-dlp, ffmpeg, python3
 # Opcjonalne / Optional (Spotify): spotdl (pipx install spotdl)
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONF="$SCRIPT_DIR/dlmedia.conf"
 TITLE="dlmedia"
 
 die() { echo "$1" >&2; exit 1; }
 [[ "${BASH_VERSINFO[0]:-0}" -ge 4 ]] || die "bash >= 4.0 required / wymagany bash >= 4.0 (macOS: brew install bash, then run with that bash)"
-command -v dialog >/dev/null || die "dialog not found / nie znaleziono — sudo apt install dialog"
-command -v stdbuf >/dev/null || die "stdbuf (GNU coreutils) not found / nie znaleziono — Debian/Ubuntu: built-in; macOS: brew install coreutils"
 command -v python3 >/dev/null || die "python3 not found / nie znaleziono — sudo apt install python3 (needed for i18n / wymagany do tłumaczeń)"
+
+# dialog + stdbuf are only needed for the interactive TUI, not for CLI mode.
+# Checked lazily so `--url …` CLI works where they're absent (e.g. Git Bash on Windows).
+require_tui() {
+    command -v dialog >/dev/null || die "dialog not found / nie znaleziono — sudo apt install dialog"
+    command -v stdbuf >/dev/null || die "stdbuf (GNU coreutils) not found / nie znaleziono — Debian/Ubuntu: built-in; macOS: brew install coreutils"
+}
 
 # ── Message catalog ──────────────────────────────────────────────────────────
 # All user-facing strings live in locales/<lang>.json (one source of truth, also
@@ -59,6 +64,7 @@ check_deps() {
 
 run_setup() {
     local dl_dir fmt qual ask_fmt ask_qual qual_label pl_sub lang
+    require_tui
 
     # ── Step 0: language (bilingual prompt, shown before UI_LANG is known) ──
     lang=$(dialog --title "$TITLE — Language / Język" --default-item "${UI_LANG:-pl}" --menu \
@@ -166,6 +172,62 @@ EOF
         14 65
 }
 
+# Build yt-dlp format/quality flags into the global `args` array. Shared by TUI + CLI
+# so the selector logic lives in one place.
+build_yt_args() {
+    local format="$1" quality="$2" fmt
+    if [[ "$format" == "mp4" ]]; then
+        case "$quality" in
+            best) fmt="-f bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" ;;
+            *)    fmt="-f bestvideo[height<=${quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${quality}][ext=mp4]/best" ;;
+        esac
+        args=($fmt --merge-output-format mp4)
+    else
+        args=(-x --audio-format mp3 --audio-quality "${quality}K")
+    fi
+}
+
+# Non-interactive CLI: no dialog, no stdbuf. Output streams to the terminal and the
+# exit code reflects the downloader — so scripts/automation (and Git Bash on Windows)
+# can call dlmedia without the TUI. Reuses build_yt_args + the i18n catalog.
+cli_main() {
+    local url="" format="" quality="" out=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --url)     url="$2";     shift 2 ;;
+            --format)  format="$2";  shift 2 ;;
+            --quality) quality="$2"; shift 2 ;;
+            --out)     out="$2";     shift 2 ;;
+            --lang)    UI_LANG="$2"; load_lang; shift 2 ;;
+            *) die "$(printf "${M[cli_bad_arg]}" "$1")" ;;
+        esac
+    done
+    [[ -n "$url" ]] || die "${M[err_no_url]}"
+    format="${format:-${DEFAULT_FORMAT:-mp4}}"
+    [[ "$format" == "mp3" || "$format" == "mp4" ]] || die "${M[cli_bad_format]}"
+    out="${out:-$DOWNLOAD_DIR}"
+    mkdir -p "$out"
+
+    if [[ "$url" == *"open.spotify.com"* || "$url" == *"spotify.link"* ]]; then
+        command -v spotdl >/dev/null || die "${M[err_spotdl]}"
+        [[ -n "$quality" ]] || quality="320"
+        spotdl --bitrate "${quality}k" --output "$out/{artist} - {title}" "$url"
+        return $?
+    fi
+
+    command -v yt-dlp >/dev/null || die "yt-dlp not found / nie znaleziono"
+    if [[ -z "$quality" ]]; then
+        [[ "$format" == "mp4" ]] && quality="best" || quality="320"
+    fi
+    build_yt_args "$format" "$quality"
+    yt-dlp "${args[@]}" -o "$out/%(title)s.%(ext)s" "$url"
+    return $?
+}
+
+# Test hook: `DLMEDIA_LIB=1 source dlmedia` defines the functions above without
+# running the app, so tests/ can exercise build_yt_args / cli_main / load_lang.
+[[ -n "${DLMEDIA_LIB:-}" ]] && return 0 2>/dev/null
+
 UI_LANG="pl"
 DOWNLOAD_DIR="/mnt/c/Users/$(whoami)/Downloads/yt-dlp"
 DEFAULT_FORMAT=""
@@ -181,6 +243,7 @@ mkdir -p "$DOWNLOAD_DIR"
 
 
 case "${1:-}" in
+    --url)    cli_main "$@"; exit $? ;;
     --update) echo "${M[updating]}"; yt-dlp --update; exit $? ;;
     --setup)  run_setup; source "$CONF"; exit 0 ;;
     --help)   echo "${M[help]}"; exit 0 ;;
@@ -192,6 +255,7 @@ if [[ ! -f "$CONF" ]]; then
     load_lang
 fi
 
+require_tui
 check_deps
 
 while true; do
@@ -358,12 +422,6 @@ if [[ "$format" == "mp4" ]]; then
     else
         quality="${DEFAULT_QUALITY:-best}"
     fi
-
-    case "$quality" in
-        best) fmt="-f bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" ;;
-        *)    fmt="-f bestvideo[height<=${quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${quality}][ext=mp4]/best" ;;
-    esac
-    args=($fmt --merge-output-format mp4)
 else
     if [[ "$ASK_QUALITY" == true ]]; then
         quality=$(dialog --title "$TITLE" --default-item "${DEFAULT_QUALITY:-320}" --menu "${M[audio_quality_q]}" 14 50 3 \
@@ -374,9 +432,9 @@ else
     else
         quality="${DEFAULT_QUALITY:-320}"
     fi
-
-    args=(-x --audio-format mp3 --audio-quality "${quality}K")
 fi
+
+build_yt_args "$format" "$quality"
 
 is_playlist=false
 if [[ ${#playlist_args[@]} -gt 0 && "${playlist_args[0]}" != "--no-playlist" ]]; then
