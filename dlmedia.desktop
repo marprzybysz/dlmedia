@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=DLMedia
+GenericName=Media Downloader
+GenericName[pl]=Pobieranie mediów
+Comment=Download audio and video from YouTube and Spotify
+Comment[pl]=Pobieraj audio i wideo z YouTube i Spotify
+Exec=__DLMEDIA_EXEC__
+Icon=dlmedia
+Terminal=true
+Categories=AudioVideo;Network;Utility;
+Keywords=youtube;spotify;download;yt-dlp;video;audio;music;

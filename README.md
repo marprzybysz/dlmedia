@@ -66,6 +66,17 @@ chmod +x dlmedia
 
 On first run a setup wizard asks for your language, default format/quality, download folder, and whether to create per-playlist subfolders. It writes `dlmedia.conf` next to the script (this file is git-ignored — it's personal).
 
+### Desktop entry (Linux)
+
+To get a **DLMedia** icon in your GNOME/KDE/etc. application menu (launches the TUI in a terminal):
+
+```bash
+./install-desktop.sh              # install icon + menu entry (no root, ~/.local/share)
+./install-desktop.sh --uninstall  # remove it
+```
+
+This installs `dlmedia.desktop` and the SVG icon from `assets/` for the current user only.
+
 ## Usage
 
 ```bash

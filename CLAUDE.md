@@ -107,7 +107,7 @@ PY
 The project is evolving into a multi-frontend, multilingual downloader (portfolio goal). Full plan in `~/.claude/plans/` (Polish). Phased:
 1. ✅ **Externalize locale catalog** → `locales/*.json` (done — see i18n section).
 2. ✅ **Non-interactive CLI mode** (`cli_main`: `--url … --format mp3 --quality 320`, no `dialog`/`stdbuf`) so tools/AI/Git-Bash-on-Windows can call dlmedia without the TUI; TUI stays the default (no args). Done, with `tests/run.sh`.
-3. **Linux desktop integration** (`.desktop` + icon for GNOME/KDE) — next.
+3. ✅ **Linux desktop integration** — `dlmedia.desktop` (template, `Exec=__DLMEDIA_EXEC__`) + `assets/dlmedia.svg` icon, installed per-user by `install-desktop.sh` (fills Exec via sed, copies to `~/.local/share/{applications,icons}`, `--uninstall` to remove). `Terminal=true` (it's a TUI).
 4. **Windows GUI** — separate app in **Python + Qt (PySide6)**, reads the same `locales/*.json`, bundles yt-dlp/spotdl/ffmpeg + installer + update check. (Java/Electron rejected.)
 
 The bash script stays the Linux CLI/TUI; the GUI is a separate app sharing the locale catalog and the yt-dlp/spotdl engine. Differentiator vs competitors (GDownloader, Harmoni): multilingual + localized UX. License GPL-3.0; brand protected by trademarking "DLMedia" (GPL does not protect the idea).
