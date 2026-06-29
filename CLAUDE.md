@@ -82,21 +82,44 @@ URL dispatch is string-matching, not validation:
 
 No tests / build. After editing: `bash -n dlmedia` (syntax) and `shellcheck dlmedia` if available. The TUI can't be driven non-interactively (every screen blocks on `dialog`) — reason through the branch by reading the code; manual TUI runs are the user's job.
 
+After touching i18n, run the **locale parity check** (catches missing/extra/unused keys):
+```bash
+python3 - <<'PY'
+import json, re, glob
+locs = {f: set(json.load(open(f, encoding='utf-8'))) for f in glob.glob('locales/*.json')}
+base = set.union(*locs.values())
+for f, ks in locs.items():
+    if ks != base: print(f, "missing:", sorted(base-ks), "extra:", sorted(ks-base))
+used = set(re.findall(r'\$\{M\[([a-z0-9_]+)\]', open('dlmedia', encoding='utf-8').read()))
+print("used but undefined:", sorted(used-base) or "—")
+print("defined but unused:", sorted(base-used) or "—")
+PY
+```
+`load_lang` itself is testable in isolation (source the function, set `UI_LANG`, call it, inspect `${M[...]}`) — unlike the dialog screens.
+
 ## Planned direction
 
-A non-interactive CLI mode is planned (e.g. `--url … --format mp3 --quality 320`) so tools/AI can call dlmedia without the TUI; TUI stays the default (no args). The project is headed for public GitHub release (@marprzybysz).
+The project is evolving into a multi-frontend, multilingual downloader (portfolio goal). Full plan in `~/.claude/plans/` (Polish). Phased:
+1. **Externalize locale catalog** → `locales/*.json` (done — see i18n section).
+2. **Non-interactive CLI mode** (`--url … --format mp3 --quality 320`, no `dialog`/`stdbuf`) so tools/AI/Git-Bash-on-Windows can call dlmedia without the TUI; TUI stays the default (no args).
+3. **Linux desktop integration** (`.desktop` + icon for GNOME/KDE).
+4. **Windows GUI** — separate app in **Python + Qt (PySide6)**, reads the same `locales/*.json`, bundles yt-dlp/spotdl/ffmpeg + installer + update check. (Java/Electron rejected.)
+
+The bash script stays the Linux CLI/TUI; the GUI is a separate app sharing the locale catalog and the yt-dlp/spotdl engine. Differentiator vs competitors (GDownloader, Harmoni): multilingual + localized UX. License GPL-3.0; brand protected by trademarking "DLMedia" (GPL does not protect the idea).
 
 ## i18n / message catalog
 
-All user-facing strings live in `load_lang()`, which fills a global associative array `M` keyed by message id, switching on `$UI_LANG` (`en` block / `pl` default block). Reference strings as `${M[key]}`; strings with `%s` are printf templates interpolated at the call site (`printf "${M[preview_body]}" "$a" "$b" …`). **Never hardcode a user-facing string in a `dialog` call** — add a key to *both* language blocks instead. The two blocks must keep identical key sets (verify after edits), or a key shows empty in one language.
+All user-facing strings live in **`locales/<lang>.json`** (one source of truth, intended to be shared with the planned GUI). `load_lang()` reads `locales/${UI_LANG}.json` into the global associative array `M`, falling back to `locales/en.json` if the language file is missing. The read goes through `python3` (now a hard pre-flight dep): python emits `key\0value\0` pairs, bash slurps them with `while IFS= read -r -d ''`. **Adding a language = drop a new `<lang>.json`; no code change.**
 
-`load_lang` runs: (1) inside `run_setup` right after the language picker, and (2) in the main flow after `source`ing the conf — so it must be called before `check_deps`/the main loop. The setup wizard's first screen is a bilingual language menu (`pl`/`en`); the rest of setup and the whole TUI then render in the chosen language. Proper nouns / neutral tokens (`Spotify`, `Exit`, bitrates, `Setup`, step counters) stay literal.
+Reference strings as `${M[key]}`; strings with `%s` are printf templates interpolated at the call site (`printf "${M[preview_body]}" "$a" "$b" …`). JSON stores `\n` (parsed to real newlines — dialog renders both fine). **Never hardcode a user-facing string in a `dialog` call** — add the key to *every* `locales/*.json` instead. All locale files must keep identical key sets, or a key shows empty in some language. Verify with the parity check in "Verifying changes".
 
-The pre-flight `dialog`-missing `die` (top of script) runs before `load_lang`, so its message is intentionally bilingual literal.
+`load_lang` runs: (1) inside `run_setup` right after the language picker, and (2) in the main flow after `source`ing the conf — so it must be called before `check_deps`/the main loop. The setup wizard's first screen is a bilingual language menu (`pl`/`en`); the rest of setup and the whole TUI then render in the chosen language. Proper nouns / neutral tokens (`Spotify`, `Exit`, bitrates, `Setup`, step counters) stay literal — keep them out of the JSON.
+
+The pre-flight `die`s at the top (`bash<4`, missing `dialog`/`stdbuf`/`python3`) run before `load_lang`, so their messages are intentionally bilingual literal.
 
 ## Language
 
-UI is bilingual (Polish default, English optional via `UI_LANG`). Variable names and comments mix English/Polish. When adding user-facing text, add the key to both blocks of `load_lang` — keep Polish natural (it's the default/primary language).
+UI is multilingual (Polish default, English shipped; more = drop a `locales/<lang>.json`). Variable names and comments mix English/Polish. When adding user-facing text, add the key to **every** `locales/*.json` — keep Polish natural (it's the default/primary language). Multilingual support is the project's chosen differentiator (see `~/.claude/plans/`), so keep the locale catalog clean and complete.
 
 ## Author
 
