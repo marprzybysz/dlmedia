@@ -44,9 +44,50 @@ Optional: `spotdl` (for Spotify, install via `pipx install spotdl`)
 
 Single file `dlmedia` script (~400 lines). Config stored in `dlmedia.conf` next to the script. All UI via `dialog` — download phase uses `--programbox` for verbose output.
 
+## Control flow
+
+The whole script is one file, read top to bottom:
+
+1. **Defs** — `die()`, `check_deps()`, `run_setup()`.
+2. **Config load** — defaults set as plain vars, then `dlmedia.conf` is `source`d over them (conf overrides defaults). `--update`/`--setup`/`--help` are handled here and exit. No conf → mandatory `run_setup`.
+3. **Main `while true` loop** — prompt URL → dispatch by URL pattern → download → summary screen with "Powrót" (`continue`, back to URL) or "Exit" (`exit 0`).
+
+URL dispatch is string-matching, not validation:
+- `*open.spotify.com*` / `*spotify.link*` → Spotify branch (spotdl); it `continue`s at its end so it never falls through to yt-dlp.
+- `*list=*` / `*/playlist*` / `*/sets/*` → playlist handling (`/sets/` is SoundCloud-style), then yt-dlp.
+- otherwise → single video.
+
+## `dialog` idioms (copy exactly)
+
+- **Result capture:** every interactive `dialog` uses `3>&1 1>&2 2>&3` to get the selection onto stdout into `$(...)`. dialog draws UI to stderr, writes the result to fd 3.
+- **Cancel handling:** prompts end with `|| exit 0` (Cancel/Esc) or `|| die "..."`. Never omit this — it traps the user.
+- **Dynamic sizing:** list dialogs compute height from item count, clamped to `$(tput lines) - 4` (`max_h`/`box_h`/`menu_h`). Reuse for any new scrollable list.
+- **Download phase = `--programbox`:** `stdbuf -oL <tool> ... 2>&1 | tee "$log" | dialog --programbox`. `stdbuf -oL` (+ yt-dlp `--newline`) forces line-buffering so output streams live; `tee` keeps a log for the summary. Never use raw `tput` scroll output — the user rejected it as "surowe".
+
+## Gotchas (don't reintroduce)
+
+- **Summaries are parsed from the log**, not exit codes. yt-dlp: `grep -c "\[download\] Destination:"` and `"has already been recorded"`, errors via `grep -iE "ERROR:|unable to download"`. spotdl: counts `^Downloaded`, greps `error|failed|skipping`. If you change tool flags/versions, re-verify these patterns match real output.
+- **`grep -c` double-zero:** `grep -c` prints "0" *and* exits 1; `|| echo 0` then appends a second "0". Use `|| true` plus an empty-check (`[[ -z … ]] && x=0`).
+- **spotdl stdout leak:** suppress metadata fetch with `>/dev/null 2>&1` (not just `2>/dev/null`) or "Processing query..." bleeds above the dialog.
+- **spotdl has no `--list`:** get track metadata via `spotdl save --save-file <json>`, parse with inline `python3`.
+- **Subshell vars:** `cmd | while read` loses vars; use `while read < <(cmd)` (process substitution).
+- **Overwrite detection scope:** only check the playlist subfolder (via `list_name`/`pl_name`), not the whole `DOWNLOAD_DIR`, or unrelated files trigger the overwrite prompt.
+- **Skip-existing differs by tool:** yt-dlp uses `--download-archive "$DOWNLOAD_DIR/.ytdl-archive"`; spotdl uses `--skip-existing`.
+- **Custom-path textbox starts empty** (not pre-filled with `$(whoami)`): WSL user `marprzybysz` ≠ Windows folder `Marcin`, which caused permission-denied.
+- **No auto-update:** never update yt-dlp on normal runs; only via `./dlmedia --update`.
+- **ASK_FORMAT / ASK_QUALITY must stay:** users need to pick "zawsze pytaj" in setup and toggle these. Removing them is a hard no.
+
+## Verifying changes
+
+No tests / build. After editing: `bash -n dlmedia` (syntax) and `shellcheck dlmedia` if available. The TUI can't be driven non-interactively (every screen blocks on `dialog`) — reason through the branch by reading the code; manual TUI runs are the user's job.
+
+## Planned direction
+
+A non-interactive CLI mode is planned (e.g. `--url … --format mp3 --quality 320`) so tools/AI can call dlmedia without the TUI; TUI stays the default (no args). The project is headed for public GitHub release (@marprzybysz).
+
 ## Language
 
-UI is in Polish. Variable names and comments in English/Polish mix.
+UI is in Polish. Variable names and comments in English/Polish mix. Keep new user-facing dialog strings in Polish.
 
 ## Author
 
