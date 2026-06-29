@@ -69,7 +69,7 @@ class MainWindow(QMainWindow):
         fq = QHBoxLayout()
         self.format_label = QLabel()
         self.format_combo = QComboBox()
-        self.format_combo.addItems(["mp4", "mp3"])
+        self.format_combo.addItems(["mp3", "mp4"])
         self.format_combo.currentTextChanged.connect(self._refresh_quality)
         self.quality_label = QLabel()
         self.quality_combo = QComboBox()
