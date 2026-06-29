@@ -294,14 +294,43 @@ for s in data:
     for i in "${!spot_tracks[@]}"; do
         spot_list+="$((i+1)). ${spot_tracks[$i]}\n"
     done
-    spot_list+="─────────────────────────────\n$(printf "${M[spot_footer]}" "$quality" "$DOWNLOAD_DIR")"
 
+    # Mode: all / pick / range — same selection UX as YouTube playlists.
     max_h=$(($(tput lines) - 4))
-    box_h=$((spot_count + 10))
-    [[ $box_h -gt $max_h ]] && box_h=$max_h
+    box_h=$((spot_count + 12)); [[ $box_h -gt $max_h ]] && box_h=$max_h
+    menu_h=$((box_h - 8)); [[ $menu_h -lt 4 ]] && menu_h=4
+    spot_mode=$(dialog --title "$TITLE — Spotify ($spot_count ${M[word_tracks]})" --menu \
+        "$(echo -e "$spot_list")\n─────────────────────────────\n${M[pl_what]}" \
+        $box_h 70 $menu_h \
+        "all"   "${M[spot_all]}" \
+        "pick"  "${M[spot_pick]}" \
+        "range" "${M[spot_range]}" \
+        3>&1 1>&2 2>&3) || exit 0
 
-    dialog --title "$TITLE — Spotify ($spot_count ${M[word_tracks]})" --yes-label "${M[btn_download]}" --no-label "${M[btn_cancel]}" \
-        --yesno "$(echo -e "$spot_list")" $box_h 70 3>&1 1>&2 2>&3 || exit 0
+    # pick/range produce a filtered .spotdl (reusing the metadata already fetched);
+    # all downloads straight from the URL. spotdl reads the saved file back.
+    spot_picked="/tmp/dlmedia_spot_picked_$$.spotdl"
+    spot_query="$url"
+    if [[ "$spot_mode" != "all" ]]; then
+        if [[ "$spot_mode" == "pick" ]]; then
+            checklist_args=()
+            for i in "${!spot_tracks[@]}"; do
+                checklist_args+=("$((i+1))" "${spot_tracks[$i]}" "OFF")
+            done
+            box_h=$((spot_count + 8)); [[ $box_h -gt $max_h ]] && box_h=$max_h
+            list_h=$((box_h - 6)); [[ $list_h -lt 4 ]] && list_h=4
+            picked=$(dialog --title "$TITLE — Spotify" --checklist "${M[checklist_hint]}" \
+                $box_h 70 $list_h "${checklist_args[@]}" 3>&1 1>&2 2>&3) || exit 0
+            [[ -z "$picked" ]] && { rm -f "$spot_save"; die "${M[spot_no_pick]}"; }
+            spec=$(echo "$picked" | tr -d '"' | tr ' ' ',')
+        else
+            spec=$(dialog --title "$TITLE — Spotify" --inputbox "${M[range_prompt]}" 10 50 3>&1 1>&2 2>&3) || exit 0
+            [[ -z "$spec" ]] && { rm -f "$spot_save"; die "${M[err_no_range]}"; }
+        fi
+        spot_count=$(python3 "$SCRIPT_DIR/tools/spotdl_filter.py" "$spot_save" "$spec" "$spot_picked" 2>/dev/null)
+        [[ -z "$spot_count" || "$spot_count" -eq 0 ]] && { rm -f "$spot_save" "$spot_picked"; die "${M[err_spot_list]}"; }
+        spot_query="$spot_picked"
+    fi
 
     overwrite_args=()
     if [[ "$PLAYLIST_SUBFOLDERS" == true ]]; then
@@ -321,11 +350,11 @@ for s in data:
     fi
 
     log="/tmp/dlmedia_spot_$$.log"
-    stdbuf -oL spotdl "${overwrite_args[@]}" --bitrate "${quality}k" --output "$spot_output" "$url" 2>&1 | tee "$log" | dialog --title "$TITLE — ${M[downloading]} ($spot_count ${M[word_tracks]})" --programbox 20 78
+    stdbuf -oL spotdl "${overwrite_args[@]}" --bitrate "${quality}k" --output "$spot_output" "$spot_query" 2>&1 | tee "$log" | dialog --title "$TITLE — ${M[downloading]} ($spot_count ${M[word_tracks]})" --programbox 20 78
 
     failed=$(grep -i "error\|failed\|skipping" "$log" | grep -iv "skipping.*existing" || true)
     downloaded=$(grep -c "^Downloaded" "$log" || echo 0)
-    rm -f "$log" "$spot_save"
+    rm -f "$log" "$spot_save" "$spot_picked"
 
     summary="$(printf "${M[summary_spot]}" "$downloaded" "$spot_count")"
     if [[ -n "$failed" ]]; then
