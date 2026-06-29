@@ -76,6 +76,7 @@ URL dispatch is string-matching, not validation:
 - **`grep -c` double-zero:** `grep -c` prints "0" *and* exits 1; `|| echo 0` then appends a second "0". Use `|| true` plus an empty-check (`[[ -z … ]] && x=0`).
 - **spotdl stdout leak:** suppress metadata fetch with `>/dev/null 2>&1` (not just `2>/dev/null`) or "Processing query..." bleeds above the dialog.
 - **spotdl has no `--list`:** get track metadata via `spotdl save --save-file <json>`, parse with inline `python3`.
+- **Spotify pick/range:** the `save` JSON is filtered by `tools/spotdl_filter.py` (`parse_spec`/`filter_file`, shared + unit-tested) into a smaller `.spotdl`, then `spotdl download <picked.spotdl>` reads it back — no re-query. `all` still downloads from the URL. Keep the filter module the single source for selection logic (the GUI's Spotify path will reuse it).
 - **Subshell vars:** `cmd | while read` loses vars; use `while read < <(cmd)` (process substitution).
 - **Overwrite detection scope:** only check the playlist subfolder (via `list_name`/`pl_name`), not the whole `DOWNLOAD_DIR`, or unrelated files trigger the overwrite prompt.
 - **Skip-existing differs by tool:** yt-dlp uses `--download-archive "$DOWNLOAD_DIR/.ytdl-archive"`; spotdl uses `--skip-existing`.
