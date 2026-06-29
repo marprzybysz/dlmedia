@@ -30,11 +30,12 @@ def build_command(url: str, fmt: str = "mp4", quality: str = "", out: str = ".")
 
     if fmt == "mp4":
         q = quality or "best"
+        # Codec-agnostic so 4K/8K (VP9/AV1) isn't capped to ~1080p H.264;
+        # --merge-output-format mp4 remuxes the result into an .mp4 container.
         if q == "best":
-            sel = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+            sel = "bestvideo+bestaudio/best"
         else:
-            sel = (f"bestvideo[height<={q}][ext=mp4]+bestaudio[ext=m4a]/"
-                   f"best[height<={q}][ext=mp4]/best")
+            sel = f"bestvideo[height<={q}]+bestaudio/best[height<={q}]/best"
         return ["yt-dlp", "-f", sel, "--merge-output-format", "mp4",
                 "-o", f"{out}/%(title)s.%(ext)s", url]
 

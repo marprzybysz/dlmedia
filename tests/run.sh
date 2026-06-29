@@ -35,9 +35,11 @@ UI_LANG=zz load_lang; eq  "missing lang -> en"    "${M[btn_download]}" "Download
                       has "template has %s"        "${M[preview_body]}" "%s"
 
 section "build_yt_args"
-build_yt_args mp4 best; eq "mp4/best"   "${args[*]}" "-f bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best --merge-output-format mp4"
+build_yt_args mp4 best; eq "mp4/best"   "${args[*]}" "-f bestvideo+bestaudio/best --merge-output-format mp4"
 build_yt_args mp4 720;  has "mp4/720 caps height" "${args[*]}" "height<=720"
 build_yt_args mp4 720;  has "mp4/720 merges mp4"  "${args[*]}" "--merge-output-format mp4"
+build_yt_args mp4 2160; has "mp4/4K caps height"  "${args[*]}" "height<=2160"
+build_yt_args mp4 2160; eq  "mp4/4K not mp4-capped" "$([[ "${args[*]}" != *'[ext=mp4]'* ]] && echo ok)" "ok"
 build_yt_args mp3 320;  eq "mp3/320"    "${args[*]}" "-x --audio-format mp3 --audio-quality 320K"
 build_yt_args mp3 128;  eq "mp3/128"    "${args[*]}" "-x --audio-format mp3 --audio-quality 128K"
 
@@ -53,7 +55,7 @@ has "calls yt-dlp"            "$out" "YTDLP"
 has "passes audio quality"   "$out" "--audio-quality 192K"
 has "output template + --out" "$out" "-o $TMP/o/%(title)s.%(ext)s"
 out=$(cli_main --url 'https://youtu.be/abc' --format mp4 --out "$TMP/o" 2>&1)
-has "mp4 default quality=best" "$out" "best[ext=mp4]"
+has "mp4 default quality=best" "$out" "bestvideo+bestaudio/best"
 
 section "cli_main — Spotify routing (stubbed spotdl)"
 out=$(cli_main --url 'https://open.spotify.com/track/xyz' --out "$TMP/o" 2>&1)

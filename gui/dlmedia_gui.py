@@ -24,7 +24,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 from engine import build_command, is_spotify  # noqa: E402
 from i18n import Catalog, available_languages  # noqa: E402
 
-QUALITY = {"mp4": ["best", "1080", "720", "480", "360"], "mp3": ["320", "192", "128"]}
+QUALITY = {
+    "mp4": ["best", "4320", "2160", "1440", "1080", "720", "480", "360"],
+    "mp3": ["320", "192", "128"],
+}
 
 
 class MainWindow(QMainWindow):

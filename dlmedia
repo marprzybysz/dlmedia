@@ -177,9 +177,11 @@ EOF
 build_yt_args() {
     local format="$1" quality="$2" fmt
     if [[ "$format" == "mp4" ]]; then
+        # Codec-agnostic so 4K/8K (VP9/AV1) isn't capped to ~1080p H.264;
+        # --merge-output-format mp4 remuxes the result into an .mp4 container.
         case "$quality" in
-            best) fmt="-f bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" ;;
-            *)    fmt="-f bestvideo[height<=${quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${quality}][ext=mp4]/best" ;;
+            best) fmt="-f bestvideo+bestaudio/best" ;;
+            *)    fmt="-f bestvideo[height<=${quality}]+bestaudio/best[height<=${quality}]/best" ;;
         esac
         args=($fmt --merge-output-format mp4)
     else
@@ -412,8 +414,11 @@ fi
 
 if [[ "$format" == "mp4" ]]; then
     if [[ "$ASK_QUALITY" == true ]]; then
-        quality=$(dialog --title "$TITLE" --default-item "${DEFAULT_QUALITY:-best}" --menu "${M[video_quality_q]}" 16 50 5 \
+        quality=$(dialog --title "$TITLE" --default-item "${DEFAULT_QUALITY:-best}" --menu "${M[video_quality_q]}" 19 52 8 \
             "best"  "${M[opt_best]}" \
+            "4320"  "4320p (8K)" \
+            "2160"  "2160p (4K)" \
+            "1440"  "1440p (2K)" \
             "1080"  "1080p (Full HD)" \
             "720"   "720p (HD)" \
             "480"   "480p (SD)" \

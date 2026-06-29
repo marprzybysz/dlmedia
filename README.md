@@ -8,7 +8,7 @@ A simple terminal UI (TUI) for downloading media from **YouTube** and **Spotify*
 
 - **YouTube** — single videos and playlists (download all / pick specific / range like `1-5` / single from URL)
 - **Spotify** — albums and playlists (via `spotdl`), with a track-list preview before downloading
-- **Format & quality** — MP4 video (best/1080/720/480/360) or MP3 audio (320/192/128 kbps)
+- **Format & quality** — MP4 video up to **8K** (best/4320/2160 (4K)/1440/1080/720/480/360) or MP3 audio (320/192/128 kbps). The selector is codec-agnostic (VP9/AV1) so high-res isn't capped at 1080p, then remuxed to `.mp4`.
 - **Info preview** before download (title, duration, approximate size)
 - **Skip or overwrite** files already downloaded (per playlist/album subfolder)
 - **Live download output** streamed inside the TUI, plus a summary with error reporting

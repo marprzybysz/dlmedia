@@ -42,17 +42,23 @@ class TestEngineYouTube(unittest.TestCase):
     def test_mp4_best_selector(self):
         cmd = build_command(YT, "mp4", "best", "/tmp/o")
         self.assertIn("-f", cmd)
-        self.assertTrue(any("best[ext=mp4]" in a for a in cmd))
+        self.assertIn("bestvideo+bestaudio/best", cmd)
         self.assertIn("--merge-output-format", cmd)
         self.assertIn("mp4", cmd)
 
     def test_mp4_default_quality_is_best(self):
-        self.assertTrue(any("best[ext=mp4]" in a for a in build_command(YT, "mp4", "", "/tmp/o")))
+        self.assertIn("bestvideo+bestaudio/best", build_command(YT, "mp4", "", "/tmp/o"))
 
     def test_mp4_capped_heights(self):
-        for h in ("1080", "720", "480", "360"):
+        for h in ("4320", "2160", "1440", "1080", "720", "480", "360"):
             with self.subTest(height=h):
                 self.assertTrue(any(f"height<={h}" in a for a in build_command(YT, "mp4", h, "/tmp/o")))
+
+    def test_mp4_4k_not_capped_to_h264_mp4(self):
+        # The selector must NOT force [ext=mp4] (which silently caps 4K/8K at 1080p).
+        cmd = build_command(YT, "mp4", "2160", "/tmp/o")
+        self.assertTrue(any("height<=2160" in a for a in cmd))
+        self.assertFalse(any("[ext=mp4]" in a for a in cmd))
 
     def test_output_template_uses_out_dir(self):
         cmd = build_command(YT, "mp3", "320", "/music/out")
