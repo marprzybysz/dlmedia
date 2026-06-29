@@ -1,10 +1,10 @@
 # dlmedia
 
-TUI media downloader for YouTube and Spotify, built for WSL/Linux.
+TUI media downloader for YouTube, Spotify and SoundCloud, built for WSL/Linux.
 
 ## Overview
 
-Bash script using `dialog` for TUI interface. Downloads via `yt-dlp` (YouTube) and `spotdl` (Spotify).
+Bash script using `dialog` for TUI interface. Downloads via `yt-dlp` (YouTube, SoundCloud, and anything else yt-dlp supports — unrecognized URLs fall through to it) and `spotdl` (Spotify). SoundCloud needs no special branch: tracks go through the single-video path, `*/sets/*` through the playlist path; both hit yt-dlp's SoundCloud extractors.
 
 ## Usage
 

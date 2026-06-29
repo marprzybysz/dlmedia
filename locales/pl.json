@@ -27,7 +27,7 @@
   "lbl_lowest": "najniższa",
   "lbl_yes": "tak",
   "lbl_no": "nie",
-  "url_prompt": "Wklej URL (YouTube / Spotify):",
+  "url_prompt": "Wklej URL (YouTube / Spotify / SoundCloud):",
   "err_no_url": "Nie podano URL",
   "err_spotdl": "spotdl nie znaleziony — zainstaluj: pipx install spotdl",
   "audio_quality_q": "Jakość audio:",

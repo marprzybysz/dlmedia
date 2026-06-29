@@ -1,6 +1,6 @@
 # dlmedia
 
-A simple terminal UI (TUI) for downloading media from **YouTube** and **Spotify**, built for WSL/Linux. Wraps [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) and [`spotdl`](https://github.com/spotDL/spotify-downloader) behind a `dialog` interface — no flags to memorize, just paste a URL.
+A simple terminal UI (TUI) for downloading media from **YouTube**, **Spotify** and **SoundCloud**, built for WSL/Linux. Wraps [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) and [`spotdl`](https://github.com/spotDL/spotify-downloader) behind a `dialog` interface — no flags to memorize, just paste a URL.
 
 > UI is bilingual: **Polish** (default) and **English**, chosen on first run.
 
@@ -8,6 +8,7 @@ A simple terminal UI (TUI) for downloading media from **YouTube** and **Spotify*
 
 - **YouTube** — single videos and playlists (download all / pick specific / range like `1-5` / single from URL)
 - **Spotify** — albums and playlists (via `spotdl`), with a track-list preview before downloading
+- **SoundCloud** — tracks and sets/playlists (via `yt-dlp`; audio, so pick MP3). Anything else `yt-dlp` supports tends to work too, since unrecognized URLs fall through to it.
 - **Format & quality** — MP4 video up to **8K** (best/4320/2160 (4K)/1440/1080/720/480/360) or MP3 audio (320/192/128 kbps). The selector is codec-agnostic (VP9/AV1) so high-res isn't capped at 1080p, then remuxed to `.mp4`.
 - **Info preview** before download (title, duration, approximate size)
 - **Skip or overwrite** files already downloaded (per playlist/album subfolder)
