@@ -6,8 +6,9 @@ A simple terminal UI (TUI) for downloading media from **YouTube**, **Spotify** a
 
 ## Features
 
-- **YouTube** — single videos and playlists (download all / pick specific / range like `1-5` / single from URL)
-- **Spotify** — albums and playlists (via `spotdl`), with a track-list preview before downloading
+- **Playlists, `menuconfig`-style** — one checklist with **every item pre-selected**; OK downloads the lot, or uncheck the ones you don't want (Space toggles, like the Linux kernel's `make menuconfig`). Works for YouTube playlists and Spotify albums/playlists alike.
+- **YouTube** — single videos and playlists
+- **Spotify** — albums and playlists (via `spotdl`)
 - **SoundCloud** — tracks and sets/playlists (via `yt-dlp`; audio, so pick MP3). Anything else `yt-dlp` supports tends to work too, since unrecognized URLs fall through to it.
 - **Format & quality** — MP4 video up to **8K** (best/4320/2160 (4K)/1440/1080/720/480/360) or MP3 audio (320/192/128 kbps). The selector is codec-agnostic (VP9/AV1) so high-res isn't capped at 1080p, then remuxed to `.mp4`.
 - **Info preview** before download (title, duration, approximate size)

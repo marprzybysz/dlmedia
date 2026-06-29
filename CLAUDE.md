@@ -36,7 +36,7 @@ Optional: `spotdl` (for Spotify, install via `pipx install spotdl`).
 
 ## Features
 
-- YouTube: single videos, playlists (all/pick/range/single)
+- YouTube: single videos, playlists (one `menuconfig`-style checklist, all pre-selected — OK = all, uncheck to exclude)
 - Spotify: albums, playlists via spotdl
 - Preview info before download (title, duration, size)
 - Overwrite/skip existing files
