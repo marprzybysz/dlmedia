@@ -9,7 +9,9 @@ CONF="$SCRIPT_DIR/dlmedia.conf"
 TITLE="dlmedia"
 
 die() { echo "$1" >&2; exit 1; }
+[[ "${BASH_VERSINFO[0]:-0}" -ge 4 ]] || die "bash >= 4.0 required / wymagany bash >= 4.0 (macOS: brew install bash, then run with that bash)"
 command -v dialog >/dev/null || die "dialog not found / nie znaleziono — sudo apt install dialog"
+command -v stdbuf >/dev/null || die "stdbuf (GNU coreutils) not found / nie znaleziono — Debian/Ubuntu: built-in; macOS: brew install coreutils"
 
 # ── Message catalog ──────────────────────────────────────────────────────────
 # All user-facing strings live here, keyed by id. load_lang fills the global
