@@ -1,2 +1,6 @@
 # Auto-generated personal config (created on first run)
 dlmedia.conf
+
+# Python bytecode
+__pycache__/
+*.pyc
