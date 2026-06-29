@@ -1,0 +1,407 @@
+#!/bin/bash
+# dlmedia — TUI do pobierania z YouTube i Spotify
+#
+# Wymagane: dialog, yt-dlp, ffmpeg, python3
+# Opcjonalne (Spotify): spotdl (pipx install spotdl)
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONF="$SCRIPT_DIR/dlmedia.conf"
+TITLE="dlmedia"
+
+die() { echo "$1" >&2; exit 1; }
+command -v dialog >/dev/null || die "dialog nie znaleziony — zainstaluj: sudo apt install dialog"
+
+check_deps() {
+    local missing=false
+    local dep_list=""
+    for dep in yt-dlp ffmpeg python3; do
+        if command -v "$dep" >/dev/null 2>&1; then
+            dep_list+="  ✓  $dep\n"
+        else
+            dep_list+="  ✗  $dep\n"
+            missing=true
+        fi
+    done
+    if [[ "$missing" == true ]]; then
+        dialog --title "$TITLE — Brakujące zależności" --msgbox \
+            "$(echo -e "$dep_list")\nZainstaluj brakujące pakiety i uruchom ponownie." 12 55
+        exit 1
+    fi
+}
+
+run_setup() {
+    local dl_dir fmt qual ask_fmt ask_qual qual_label pl_sub
+
+    dialog --title "$TITLE — Setup" --msgbox \
+        "Witaj w dlmedia!\n\nProsty TUI do pobierania mediów z YouTube i Spotify.\nObsługuje playlisty, wybór jakości i formatu.\n\nTen wizard pomoże Ci skonfigurować domyślne ustawienia.\nMożesz je zmienić później: ./dlmedia --setup" \
+        12 60
+
+    check_deps
+
+    # Format
+    fmt=$(dialog --title "$TITLE — Setup (1/4)" --default-item "${DEFAULT_FORMAT_SETUP:-ask}" --menu \
+        "Co chcesz najczęściej pobierać?" 14 55 3 \
+        "ask" "Zawsze mnie pytaj (polecane)" \
+        "mp3" "Audio (.mp3)" \
+        "mp4" "Wideo (.mp4)" \
+        3>&1 1>&2 2>&3) || exit 0
+
+    if [[ "$fmt" == "ask" ]]; then
+        ask_fmt=true
+        fmt="mp4"
+    else
+        ask_fmt=false
+    fi
+
+    # Jakość
+    qual=$(dialog --title "$TITLE — Setup (2/4)" --default-item "${DEFAULT_QUALITY_SETUP:-ask}" --menu \
+        "Domyślna jakość pobierania:" 14 55 4 \
+        "ask"    "Daj mi wybrać za każdym razem (polecane)" \
+        "best"   "Najlepsza dostępna" \
+        "medium" "Średnia" \
+        "lowest" "Najniższa (oszczędność miejsca)" \
+        3>&1 1>&2 2>&3) || exit 0
+
+    if [[ "$qual" == "ask" ]]; then
+        ask_qual=true
+        qual="best"
+        qual_label="zawsze pytaj"
+    elif [[ "$qual" == "best" ]]; then
+        ask_qual=false
+        [[ "$fmt" == "mp3" ]] && qual="320"
+        qual_label="najlepsza"
+    elif [[ "$qual" == "medium" ]]; then
+        ask_qual=false
+        [[ "$fmt" == "mp4" ]] && qual="720" || qual="192"
+        qual_label="średnia"
+    elif [[ "$qual" == "lowest" ]]; then
+        ask_qual=false
+        [[ "$fmt" == "mp4" ]] && qual="360" || qual="128"
+        qual_label="najniższa"
+    fi
+
+    # Folder
+    local dir_choice
+    dir_choice=$(dialog --title "$TITLE — Setup (3/4)" --default-item "custom" --menu \
+        "Gdzie zapisywać pobrane pliki?" 14 55 3 \
+        "custom"    "Podaj własną ścieżkę (polecane)" \
+        "subfolder" "W podfolderze ./dlm-media" \
+        "current"   "W bieżącym folderze (niezalecane)" \
+        3>&1 1>&2 2>&3) || exit 0
+
+    case "$dir_choice" in
+        current)   dl_dir="." ;;
+        subfolder) dl_dir="./dlm-media" ;;
+        custom)
+            dl_dir=$(dialog --title "$TITLE — Setup (3/4)" --inputbox "Ścieżka do folderu:" 10 70 \
+                3>&1 1>&2 2>&3) || exit 0
+            ;;
+    esac
+
+    # Subfoldery playlist
+    pl_sub=$(dialog --title "$TITLE — Setup (4/4)" --default-item "yes" --menu \
+        "Tworzyć osobne foldery dla playlist i albumów?" 12 55 2 \
+        "yes" "Tak (polecane)" \
+        "no"  "Nie — wszystko w jednym folderze" \
+        3>&1 1>&2 2>&3) || exit 0
+
+    [[ "$pl_sub" == "yes" ]] && pl_sub=true || pl_sub=false
+
+    cat > "$CONF" << EOF
+# dlmedia — konfiguracja
+# Edytuj ten plik lub uruchom: ./dlmedia --setup
+# Dokumentacja: https://github.com/user/dlmedia (TODO)
+
+DOWNLOAD_DIR="$dl_dir"
+DEFAULT_FORMAT="$fmt"
+DEFAULT_QUALITY="$qual"
+ASK_FORMAT=$ask_fmt
+ASK_QUALITY=$ask_qual
+PLAYLIST_SUBFOLDERS=$pl_sub
+EOF
+
+    local fmt_label="$fmt"
+    [[ "$ask_fmt" == true ]] && fmt_label="zawsze pytaj"
+
+    dialog --title "$TITLE — Setup zakończony" --msgbox \
+        "Konfiguracja zapisana!\n\nFormat:      $fmt_label\nJakość:      $qual_label\nFolder:      $dl_dir\nSubfoldery:  $( [[ "$pl_sub" == true ]] && echo tak || echo nie )\n\nZmień w: ./dlmedia --setup lub edytuj dlmedia.conf\nBłędy/sugestie: https://github.com/marprzybysz" \
+        14 65
+}
+
+DOWNLOAD_DIR="/mnt/c/Users/$(whoami)/Downloads/yt-dlp"
+DEFAULT_FORMAT=""
+DEFAULT_QUALITY=""
+ASK_FORMAT=true
+ASK_QUALITY=true
+PLAYLIST_SUBFOLDERS=true
+
+[[ -f "$CONF" ]] && source "$CONF"
+
+mkdir -p "$DOWNLOAD_DIR"
+
+
+case "${1:-}" in
+    --update) echo "Aktualizuję yt-dlp..."; yt-dlp --update; exit $? ;;
+    --setup)  run_setup; source "$CONF"; exit 0 ;;
+    --help)   echo "Użycie: dlmedia [--setup|--update|--help]"; exit 0 ;;
+esac
+
+if [[ ! -f "$CONF" ]]; then
+    run_setup
+    source "$CONF"
+fi
+
+check_deps
+
+while true; do
+
+url=$(dialog --title "$TITLE" --cancel-label "Exit" --inputbox "Wklej URL (YouTube / Spotify):" 10 70 3>&1 1>&2 2>&3) || exit 0
+[[ -z "$url" ]] && die "Nie podano URL"
+
+if [[ "$url" == *"open.spotify.com"* || "$url" == *"spotify.link"* ]]; then
+    command -v spotdl >/dev/null || die "spotdl nie znaleziony — zainstaluj: pipx install spotdl"
+
+    quality=$(dialog --title "$TITLE — Spotify" --menu "Jakość audio:" 14 50 3 \
+        "320" "320 kbps (najlepsza)" \
+        "192" "192 kbps" \
+        "128" "128 kbps" \
+        3>&1 1>&2 2>&3) || exit 0
+
+    dialog --title "$TITLE" --infobox "Pobieram listę utworów ze Spotify..." 5 50
+    spot_save="/tmp/dlmedia_spot_$$.spotdl"
+    spotdl save "$url" --save-file "$spot_save" >/dev/null 2>&1
+    mapfile -t spot_tracks < <(python3 -c "
+import json,sys
+data=json.load(open('$spot_save'))
+for s in data:
+    print(f\"{s['artist']} - {s['name']}\")
+" 2>/dev/null)
+    spot_count=${#spot_tracks[@]}
+
+    if [[ $spot_count -eq 0 ]]; then
+        rm -f "$spot_save"
+        die "Nie udało się pobrać listy utworów"
+    fi
+
+    spot_list=""
+    for i in "${!spot_tracks[@]}"; do
+        spot_list+="$((i+1)). ${spot_tracks[$i]}\n"
+    done
+    spot_list+="─────────────────────────────\nJakość: ${quality} kbps\nCel: $DOWNLOAD_DIR\n\nPobierać?"
+
+    max_h=$(($(tput lines) - 4))
+    box_h=$((spot_count + 10))
+    [[ $box_h -gt $max_h ]] && box_h=$max_h
+
+    dialog --title "$TITLE — Spotify ($spot_count utworów)" --yes-label "Pobierz" --no-label "Anuluj" \
+        --yesno "$(echo -e "$spot_list")" $box_h 70 3>&1 1>&2 2>&3 || exit 0
+
+    overwrite_args=()
+    if [[ "$PLAYLIST_SUBFOLDERS" == true ]]; then
+        spot_output="${DOWNLOAD_DIR}/{list-name}/{artist} - {title}"
+    else
+        spot_output="${DOWNLOAD_DIR}/{artist} - {title}"
+    fi
+    list_name=$(python3 -c "import json; data=json.load(open('$spot_save')); print(data[0].get('list_name',''))" 2>/dev/null)
+    spot_subdir="${DOWNLOAD_DIR}/${list_name}"
+    existing=$(find "$spot_subdir" -name "*.mp3" 2>/dev/null | head -1)
+    if [[ -n "$list_name" && -n "$existing" ]]; then
+        ow_mode=$(dialog --title "$TITLE" --menu "Znaleziono wcześniej pobrane pliki:" 12 55 2 \
+            "skip"      "Pomiń istniejące (pobierz brakujące)" \
+            "overwrite" "Nadpisz wszystko" \
+            3>&1 1>&2 2>&3) || exit 0
+        [[ "$ow_mode" == "skip" ]] && overwrite_args=(--skip-existing)
+    fi
+
+    log="/tmp/dlmedia_spot_$$.log"
+    stdbuf -oL spotdl "${overwrite_args[@]}" --bitrate "${quality}k" --output "$spot_output" "$url" 2>&1 | tee "$log" | dialog --title "$TITLE — Pobieranie ($spot_count utworów)" --programbox 20 78
+
+    failed=$(grep -i "error\|failed\|skipping" "$log" | grep -iv "skipping.*existing" || true)
+    downloaded=$(grep -c "^Downloaded" "$log" || echo 0)
+    rm -f "$log" "$spot_save"
+
+    summary="Pobrano: $downloaded / $spot_count"
+    if [[ -n "$failed" ]]; then
+        summary+="\n\nNie udało się pobrać:\n$failed"
+    else
+        summary+="\n\nWszystko pobrano pomyślnie!"
+    fi
+    fail_lines=$(echo "$failed" | wc -l)
+    [[ -z "$failed" ]] && fail_lines=0
+    dialog --title "$TITLE — Podsumowanie" --yes-label "Powrót" --no-label "Exit" \
+        --yesno "$summary" $((fail_lines + 10)) 70 && continue || exit 0
+fi
+
+playlist_args=()
+if [[ "$url" == *"list="* || "$url" == *"/playlist"* || "$url" == *"/sets/"* ]]; then
+    dialog --title "$TITLE" --infobox "Pobieram listę filmów..." 5 40
+    mapfile -t titles < <(yt-dlp --flat-playlist --print "%(playlist_index)s. %(title)s" "$url" 2>/dev/null)
+    count=${#titles[@]}
+
+    if [[ $count -eq 0 ]]; then
+        die "Nie udało się pobrać listy filmów"
+    fi
+
+    list_text=""
+    for t in "${titles[@]}"; do
+        list_text+="$t\n"
+    done
+
+    max_h=$(($(tput lines) - 4))
+    box_h=$((count + 12))
+    [[ $box_h -gt $max_h ]] && box_h=$max_h
+    menu_h=$((box_h - 8))
+    [[ $menu_h -lt 4 ]] && menu_h=4
+
+    pl_mode=$(dialog --title "$TITLE — Playlista ($count filmów)" --menu \
+        "$(echo -e "$list_text")\n─────────────────────────────\nCo chcesz pobrać?" \
+        $box_h 70 $menu_h \
+        "all"    "Pobierz całą playlistę" \
+        "pick"   "Zaznacz wybrane filmy" \
+        "range"  "Wpisz zakres (np. 1-5)" \
+        "single" "Tylko ten jeden film z URL" \
+        3>&1 1>&2 2>&3) || exit 0
+
+    case "$pl_mode" in
+        all)
+            playlist_args=(--yes-playlist)
+            ;;
+        pick)
+            checklist_args=()
+            for t in "${titles[@]}"; do
+                num="${t%%.*}"
+                name="${t#*. }"
+                checklist_args+=("$num" "$name" "OFF")
+            done
+            box_h=$((count + 8))
+            [[ $box_h -gt $max_h ]] && box_h=$max_h
+            list_h=$((box_h - 6))
+            [[ $list_h -lt 4 ]] && list_h=4
+            picked=$(dialog --title "$TITLE" --checklist "Spacja = zaznacz, Enter = potwierdź:" \
+                $box_h 70 $list_h \
+                "${checklist_args[@]}" \
+                3>&1 1>&2 2>&3) || exit 0
+            [[ -z "$picked" ]] && die "Nie wybrano żadnego filmu"
+            items=$(echo "$picked" | tr -d '"' | tr ' ' ',')
+            playlist_args=(--yes-playlist --playlist-items "$items")
+            ;;
+        range)
+            range=$(dialog --title "$TITLE" --inputbox "Zakres (np. 1-5, 3,7,10):" 10 50 3>&1 1>&2 2>&3) || exit 0
+            [[ -z "$range" ]] && die "Nie podano zakresu"
+            playlist_args=(--yes-playlist --playlist-items "$range")
+            ;;
+        single)
+            playlist_args=(--no-playlist)
+            ;;
+    esac
+fi
+
+if [[ "$ASK_FORMAT" == true ]]; then
+    format=$(dialog --title "$TITLE" --default-item "${DEFAULT_FORMAT:-mp4}" --menu "Format:" 12 40 2 \
+        "mp4" "Wideo (.mp4)" \
+        "mp3" "Audio (.mp3)" \
+        3>&1 1>&2 2>&3) || exit 0
+else
+    format="${DEFAULT_FORMAT:-mp4}"
+fi
+
+if [[ "$format" == "mp4" ]]; then
+    if [[ "$ASK_QUALITY" == true ]]; then
+        quality=$(dialog --title "$TITLE" --default-item "${DEFAULT_QUALITY:-best}" --menu "Jakość wideo:" 16 50 5 \
+            "best"  "Najlepsza dostępna" \
+            "1080"  "1080p (Full HD)" \
+            "720"   "720p (HD)" \
+            "480"   "480p (SD)" \
+            "360"   "360p" \
+            3>&1 1>&2 2>&3) || exit 0
+    else
+        quality="${DEFAULT_QUALITY:-best}"
+    fi
+
+    case "$quality" in
+        best) fmt="-f bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" ;;
+        *)    fmt="-f bestvideo[height<=${quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${quality}][ext=mp4]/best" ;;
+    esac
+    args=($fmt --merge-output-format mp4)
+else
+    if [[ "$ASK_QUALITY" == true ]]; then
+        quality=$(dialog --title "$TITLE" --default-item "${DEFAULT_QUALITY:-320}" --menu "Jakość audio:" 14 50 3 \
+            "320" "320 kbps (najlepsza)" \
+            "192" "192 kbps" \
+            "128" "128 kbps" \
+            3>&1 1>&2 2>&3) || exit 0
+    else
+        quality="${DEFAULT_QUALITY:-320}"
+    fi
+
+    args=(-x --audio-format mp3 --audio-quality "${quality}K")
+fi
+
+is_playlist=false
+if [[ ${#playlist_args[@]} -gt 0 && "${playlist_args[0]}" != "--no-playlist" ]]; then
+    is_playlist=true
+fi
+
+if [[ "$is_playlist" == false ]]; then
+    dialog --title "$TITLE" --infobox "Pobieram info o filmie..." 5 40
+    info=$(yt-dlp --no-playlist --print "%(title)s\n%(duration_string)s\n%(filesize_approx,filesize)s" "$url" 2>/dev/null)
+    v_title=$(echo "$info" | sed -n '1p')
+    v_duration=$(echo "$info" | sed -n '2p')
+    v_size=$(echo "$info" | sed -n '3p')
+
+    [[ "$v_size" == "NA" || -z "$v_size" ]] && v_size="nieznany" || v_size=$(numfmt --to=iec "$v_size" 2>/dev/null || echo "$v_size")
+
+    dialog --title "$TITLE — Podgląd" --yes-label "Pobierz" --no-label "Anuluj" --yesno \
+        "Tytuł:    $v_title\nDługość:  $v_duration\nRozmiar:  ~$v_size\nFormat:   $format | $quality\n\nPobierać?" \
+        12 70 3>&1 1>&2 2>&3 || exit 0
+fi
+
+if [[ "$is_playlist" == true ]]; then
+    if [[ "$PLAYLIST_SUBFOLDERS" == true ]]; then
+        output="${DOWNLOAD_DIR}/%(playlist_title)s/%(title)s.%(ext)s"
+    else
+        output="${DOWNLOAD_DIR}/%(title)s.%(ext)s"
+    fi
+    pl_name=$(yt-dlp --flat-playlist --print "%(playlist_title)s" "$url" 2>/dev/null | head -1)
+    pl_subdir="${DOWNLOAD_DIR}/${pl_name}"
+    existing=$(find "$pl_subdir" -name "*.mp4" -o -name "*.mp3" 2>/dev/null | head -1)
+    if [[ -n "$pl_name" && -n "$existing" ]]; then
+        ow_mode=$(dialog --title "$TITLE" --menu "Znaleziono wcześniej pobrane pliki:" 12 55 2 \
+            "skip"      "Pomiń istniejące (pobierz brakujące)" \
+            "overwrite" "Nadpisz wszystko" \
+            3>&1 1>&2 2>&3) || exit 0
+    fi
+else
+    output="${DOWNLOAD_DIR}/%(title)s.%(ext)s"
+fi
+
+yt_extra_args=()
+if [[ "${ow_mode:-}" == "skip" ]]; then
+    yt_extra_args=(--download-archive "${DOWNLOAD_DIR}/.ytdl-archive")
+fi
+
+log="/tmp/dlmedia_yt_$$.log"
+dl_title="Pobieranie"
+[[ "$is_playlist" == true ]] && dl_title="Pobieranie (${count:-} filmów)"
+
+stdbuf -oL yt-dlp --newline "${playlist_args[@]}" "${args[@]}" "${yt_extra_args[@]}" -o "$output" "$url" 2>&1 | tee "$log" | dialog --title "$TITLE — $dl_title" --programbox 20 78
+
+failed=$(grep -iE "ERROR:|unable to download" "$log" || true)
+downloaded=$(grep -c "\[download\] Destination:" "$log" 2>/dev/null || true)
+skipped=$(grep -c "has already been recorded" "$log" 2>/dev/null || true)
+[[ -z "$downloaded" ]] && downloaded=0
+[[ -z "$skipped" ]] && skipped=0
+rm -f "$log"
+
+summary="Pobrano: $downloaded | Pominięto: $skipped"
+if [[ -n "$failed" ]]; then
+    summary+="\n\nNie udało się pobrać:\n$failed"
+else
+    summary+="\n\nWszystko pobrano pomyślnie!"
+fi
+fail_lines=$(echo "$failed" | wc -l)
+[[ -z "$failed" ]] && fail_lines=0
+dialog --title "$TITLE — Podsumowanie" --yes-label "Powrót" --no-label "Exit" \
+    --yesno "$summary" $((fail_lines + 10)) 80 && continue || exit 0
+
+done
