@@ -72,12 +72,17 @@ for f, ks in locs.items():
     if ks != base:
         prob.append(f"{os.path.basename(f)} missing={sorted(base-ks)} extra={sorted(ks-base)}")
 used = set(re.findall(r'\$\{M\[([a-z0-9_]+)\]', open(os.path.join(root, 'dlmedia'), encoding='utf-8').read()))
+for gf in glob.glob(os.path.join(root, 'gui', '*.py')):  # GUI shares the catalog: t("key")
+    used |= set(re.findall(r'\bt\(\s*["\']([a-z0-9_]+)["\']', open(gf, encoding='utf-8').read()))
 if used - base: prob.append(f"used-but-undefined={sorted(used-base)}")
 if base - used: prob.append(f"defined-but-unused={sorted(base-used)}")
 print("OK" if not prob else "; ".join(prob))
 PY
 )
-eq "all locales same keys, all used" "$parity" "OK"
+eq "all locales same keys, all used (bash + gui)" "$parity" "OK"
+
+section "GUI core — engine + i18n (python, no Qt)"
+if python3 "$HERE/test_gui.py"; then ((pass++)); else ((fail++)); fi
 
 echo
 echo "═══ $pass passed, $fail failed ═══"

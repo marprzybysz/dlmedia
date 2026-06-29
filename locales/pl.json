@@ -70,5 +70,13 @@
   "updating": "Aktualizuję yt-dlp...",
   "cli_bad_arg": "Nieznany argument: %s",
   "cli_bad_format": "Format musi być mp3 lub mp4",
+  "gui_subtitle": "Pobieraj z YouTube i Spotify",
+  "gui_lang_label": "Język:",
+  "gui_quality": "Jakość:",
+  "gui_out_label": "Zapisz do:",
+  "gui_browse": "Przeglądaj…",
+  "gui_ready": "Gotowy",
+  "gui_done": "Gotowe",
+  "gui_error": "Błąd",
   "help": "Użycie:\n  dlmedia                                            interaktywny TUI\n  dlmedia --url <URL> [--format mp3|mp4] [--quality <Q>] [--out <DIR>] [--lang pl|en]\n  dlmedia --setup | --update | --help"
 }
