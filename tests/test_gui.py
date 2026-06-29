@@ -1,61 +1,194 @@
 #!/usr/bin/env python3
-"""Tests for the GUI's Qt-free core (engine.py, i18n.py). No PySide6 needed.
+"""Unit tests for the GUI's Qt-free core: gui/engine.py and gui/i18n.py.
 
-Run directly (`python3 tests/test_gui.py`) or via `bash tests/run.sh`.
+Standard-library unittest only (no PySide6, no pytest), so it runs anywhere.
+Run directly (`python3 tests/test_gui.py`), via unittest
+(`python3 -m unittest -v tests.test_gui`), or through `bash tests/run.sh`.
 """
+import json
 import os
 import sys
+import tempfile
+import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "gui"))
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.normpath(os.path.join(HERE, ".."))
+LOCALES = os.path.join(ROOT, "locales")
+sys.path.insert(0, os.path.join(ROOT, "gui"))
+
 from engine import build_command, is_spotify  # noqa: E402
+import i18n  # noqa: E402
 from i18n import Catalog, available_languages  # noqa: E402
 
-fails = 0
+YT = "https://youtu.be/abc"
+SPOT = "https://open.spotify.com/track/xyz"
 
 
-def check(name, cond):
-    global fails
-    print(("  ✓ " if cond else "  ✗ ") + name)
-    if not cond:
-        fails += 1
+class TestEngineYouTube(unittest.TestCase):
+    def test_mp3_is_yt_dlp_audio_extract(self):
+        cmd = build_command(YT, "mp3", "192", "/tmp/o")
+        self.assertEqual(cmd[0], "yt-dlp")
+        self.assertIn("-x", cmd)
+        self.assertIn("--audio-format", cmd)
+        self.assertIn("mp3", cmd)
+
+    def test_mp3_quality_passed_as_K(self):
+        self.assertIn("192K", build_command(YT, "mp3", "192", "/tmp/o"))
+        self.assertIn("320K", build_command(YT, "mp3", "320", "/tmp/o"))
+
+    def test_mp3_default_quality_is_320(self):
+        self.assertIn("320K", build_command(YT, "mp3", "", "/tmp/o"))
+
+    def test_mp4_best_selector(self):
+        cmd = build_command(YT, "mp4", "best", "/tmp/o")
+        self.assertIn("-f", cmd)
+        self.assertTrue(any("best[ext=mp4]" in a for a in cmd))
+        self.assertIn("--merge-output-format", cmd)
+        self.assertIn("mp4", cmd)
+
+    def test_mp4_default_quality_is_best(self):
+        self.assertTrue(any("best[ext=mp4]" in a for a in build_command(YT, "mp4", "", "/tmp/o")))
+
+    def test_mp4_capped_heights(self):
+        for h in ("1080", "720", "480", "360"):
+            with self.subTest(height=h):
+                self.assertTrue(any(f"height<={h}" in a for a in build_command(YT, "mp4", h, "/tmp/o")))
+
+    def test_output_template_uses_out_dir(self):
+        cmd = build_command(YT, "mp3", "320", "/music/out")
+        self.assertIn("-o", cmd)
+        self.assertIn("/music/out/%(title)s.%(ext)s", cmd)
+
+    def test_url_is_last_arg(self):
+        self.assertEqual(build_command(YT, "mp4", "best", "/tmp/o")[-1], YT)
+
+    def test_url_is_stripped(self):
+        self.assertEqual(build_command("  " + YT + "  ", "mp4")[-1], YT)
 
 
-# ── engine: command construction (mirrors bash build_yt_args/cli_main) ──
-cmd = build_command("https://youtu.be/x", "mp3", "192", "/tmp/o")
-check("mp3 -> yt-dlp -x", cmd[0] == "yt-dlp" and "-x" in cmd)
-check("mp3 quality 192K", "192K" in cmd)
-check("mp3 output template", "/tmp/o/%(title)s.%(ext)s" in cmd)
+class TestEngineSpotify(unittest.TestCase):
+    def test_routes_to_spotdl(self):
+        self.assertEqual(build_command(SPOT, "mp4", "", "/tmp/o")[0], "spotdl")
 
-cmd = build_command("https://youtu.be/x", "mp4", "best", "/tmp/o")
-check("mp4 best selector", any("best[ext=mp4]" in a for a in cmd))
-check("mp4 merges to mp4", "--merge-output-format" in cmd)
+    def test_default_bitrate_320k(self):
+        self.assertIn("320k", build_command(SPOT, "mp4", "", "/tmp/o"))
 
-cmd = build_command("https://youtu.be/x", "mp4", "720", "/tmp/o")
-check("mp4 720 caps height", any("height<=720" in a for a in cmd))
+    def test_custom_bitrate(self):
+        self.assertIn("128k", build_command(SPOT, "mp3", "128", "/tmp/o"))
 
-cmd = build_command("https://open.spotify.com/track/x", "mp4", "", "/tmp/o")
-check("spotify -> spotdl", cmd[0] == "spotdl")
-check("spotify default 320k", "320k" in cmd)
-check("is_spotify true", is_spotify("https://open.spotify.com/x"))
-check("is_spotify false", not is_spotify("https://youtu.be/x"))
+    def test_output_template(self):
+        cmd = build_command(SPOT, "mp3", "", "/m")
+        self.assertIn("--output", cmd)
+        self.assertTrue(any("{artist} - {title}" in a for a in cmd))
 
-try:
-    build_command("https://youtu.be/x", "ogg")
-    check("bad format raises", False)
-except ValueError:
-    check("bad format raises", True)
+    def test_format_toggle_ignored_for_spotify(self):
+        # mp4 vs mp3 must not change the spotdl command (Spotify is audio-only)
+        self.assertEqual(build_command(SPOT, "mp4", "192", "/m"),
+                         build_command(SPOT, "mp3", "192", "/m"))
 
-# ── i18n: shared locale catalog ──
-en = Catalog("en")
-pl = Catalog("pl")
-zz = Catalog("zz")
-check("en btn_download", en.t("btn_download") == "Download")
-check("pl btn_download", pl.t("btn_download") == "Pobierz")
-check("missing lang -> en", zz.t("btn_download") == "Download")
-check("template formats", "%" not in en.t("preview_body", "a", "b", "c", "d", "e"))
-check("missing key -> key", en.t("nope_xyz") == "nope_xyz")
-check("gui key present", en.t("gui_done") == "Done")
-check("languages include pl+en", {"pl", "en"}.issubset(set(available_languages())))
+    def test_spotify_link_short_domain(self):
+        self.assertEqual(build_command("https://spotify.link/abc", "mp4")[0], "spotdl")
 
-print(f"  ── gui core: {'all passed' if not fails else str(fails) + ' FAILED'}")
-sys.exit(1 if fails else 0)
+
+class TestEngineValidation(unittest.TestCase):
+    def test_empty_url_raises(self):
+        with self.assertRaises(ValueError):
+            build_command("", "mp4")
+
+    def test_whitespace_url_raises(self):
+        with self.assertRaises(ValueError):
+            build_command("   ", "mp4")
+
+    def test_bad_format_raises(self):
+        with self.assertRaises(ValueError):
+            build_command(YT, "ogg")
+
+
+class TestIsSpotify(unittest.TestCase):
+    def test_positive(self):
+        self.assertTrue(is_spotify("https://open.spotify.com/album/1"))
+        self.assertTrue(is_spotify("https://spotify.link/xyz"))
+
+    def test_negative(self):
+        self.assertFalse(is_spotify(YT))
+        self.assertFalse(is_spotify("https://soundcloud.com/x"))
+
+
+class TestCatalog(unittest.TestCase):
+    def test_loads_english(self):
+        self.assertEqual(Catalog("en").t("btn_download"), "Download")
+
+    def test_loads_polish(self):
+        self.assertEqual(Catalog("pl").t("btn_download"), "Pobierz")
+
+    def test_unknown_language_falls_back_to_en(self):
+        c = Catalog("zz")
+        self.assertEqual(c.lang, "en")
+        self.assertEqual(c.t("btn_download"), "Download")
+
+    def test_missing_key_returns_key(self):
+        self.assertEqual(Catalog("en").t("does_not_exist"), "does_not_exist")
+
+    def test_template_interpolation(self):
+        out = Catalog("en").t("summary_spot", 3, 10)
+        self.assertEqual(out, "Downloaded: 3 / 10")
+
+    def test_template_wrong_arg_count_does_not_crash(self):
+        # too few args -> return the template unformatted rather than raising
+        out = Catalog("en").t("summary_spot", 3)
+        self.assertIsInstance(out, str)
+
+    def test_runtime_language_switch(self):
+        c = Catalog("en")
+        c.load("pl")
+        self.assertEqual(c.t("btn_download"), "Pobierz")
+
+    def test_gui_key_present(self):
+        self.assertEqual(Catalog("en").t("gui_done"), "Done")
+        self.assertEqual(Catalog("pl").t("gui_done"), "Gotowe")
+
+    def test_locales_env_override(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "xx.json"), "w", encoding="utf-8") as f:
+                json.dump({"btn_download": "ZZZ"}, f)
+            old = os.environ.get("DLMEDIA_LOCALES")
+            os.environ["DLMEDIA_LOCALES"] = d
+            try:
+                self.assertEqual(Catalog("xx").t("btn_download"), "ZZZ")
+                self.assertIn("xx", available_languages())
+            finally:
+                if old is None:
+                    del os.environ["DLMEDIA_LOCALES"]
+                else:
+                    os.environ["DLMEDIA_LOCALES"] = old
+
+
+class TestLocaleFiles(unittest.TestCase):
+    def _load(self, lang):
+        with open(os.path.join(LOCALES, f"{lang}.json"), encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_available_languages_sorted_and_complete(self):
+        langs = available_languages()
+        self.assertEqual(langs, sorted(langs))
+        self.assertIn("pl", langs)
+        self.assertIn("en", langs)
+
+    def test_all_languages_have_identical_keys(self):
+        base = None
+        for lang in available_languages():
+            keys = set(self._load(lang))
+            if base is None:
+                base = keys
+            else:
+                self.assertEqual(keys, base, f"{lang}.json key set differs")
+
+    def test_every_file_is_valid_json(self):
+        for lang in available_languages():
+            with self.subTest(lang=lang):
+                self.assertIsInstance(self._load(lang), dict)
+
+
+if __name__ == "__main__":
+    # Compact by default; pass -v for the per-test listing.
+    unittest.main()
