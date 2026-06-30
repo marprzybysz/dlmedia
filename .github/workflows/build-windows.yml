@@ -1,18 +1,36 @@
 name: build-windows
 
 # Build the Windows .exe + installer in the cloud (no local Windows needed).
-# Fires when a GitHub Release is published → attaches the installer to that release.
-# Also runnable by hand (workflow_dispatch) to grab an installer as an artifact.
+#   • Release published → build + attach the installer to that release.
+#   • Push to `testing`  → build + upload the installer as a downloadable artifact
+#                          (validate the real installer before cutting a release).
+#   • workflow_dispatch  → same, on demand.
+# main is NOT built here — it only runs `tests.yml`. The build always runs behind the
+# `test` gate below, so a broken commit never produces (or ships) an installer.
 on:
   release:
     types: [published]
+  push:
+    branches: [testing]
   workflow_dispatch:
 
 permissions:
   contents: write          # needed to upload the installer onto the release
 
 jobs:
+  # Gate: the same suite as tests.yml, but here it BLOCKS the build (needs: test).
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Full test suite (bash + python)
+        run: bash tests/run.sh
+
   build:
+    needs: test            # only build if the tests are green on this commit
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
