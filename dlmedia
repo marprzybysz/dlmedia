@@ -567,7 +567,7 @@ if [[ "$branch" == "spotify" ]]; then
     fi
     tracks_file="/tmp/dlmedia_tracks_$$.txt"; printf '%s\n' "${attempted[@]}" > "$tracks_file"
     report_file="/tmp/dlmedia_report_$$.txt"
-    nfail=$(python3 "$SCRIPT_DIR/tools/dl_report.py" spot "$log" "$tracks_file" "$report_file" 2>/dev/null); [[ -z "$nfail" ]] && nfail=0
+    nfail=$(DLR_UNKNOWN="${M[report_unknown_item]}" DLR_NODETAIL="${M[report_no_detail]}" python3 "$SCRIPT_DIR/tools/dl_report.py" spot "$log" "$tracks_file" "$report_file" 2>/dev/null); [[ -z "$nfail" ]] && nfail=0
     rm -f "$log" "$spot_save" "$spot_picked" "$tracks_file"
     summary="$(printf "${M[summary_spot]}" "$downloaded" "$spot_count")"
     summary_w=70
@@ -609,7 +609,7 @@ else
     [[ -z "$downloaded" ]] && downloaded=0
     [[ -z "$skipped" ]] && skipped=0
     report_file="/tmp/dlmedia_report_$$.txt"
-    nfail=$(python3 "$SCRIPT_DIR/tools/dl_report.py" yt "$log" "${yt_ids_file:-/dev/null}" "$report_file" 2>/dev/null); [[ -z "$nfail" ]] && nfail=0
+    nfail=$(DLR_UNKNOWN="${M[report_unknown_item]}" DLR_NODETAIL="${M[report_no_detail]}" python3 "$SCRIPT_DIR/tools/dl_report.py" yt "$log" "${yt_ids_file:-/dev/null}" "$report_file" 2>/dev/null); [[ -z "$nfail" ]] && nfail=0
     rm -f "$log"
     summary="$(printf "${M[summary_yt]}" "$downloaded" "$skipped")"
     summary_w=80

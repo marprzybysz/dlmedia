@@ -49,6 +49,8 @@
   "btn_back": "Back",
   "summary_spot": "Downloaded: %s / %s",
   "summary_failed_hdr": "Failed to download (%s):",
+  "report_unknown_item": "Unknown item",
+  "report_no_detail": "spotdl reported no details for this track",
   "summary_more": "…and %s more — see “Show logs”",
   "summary_all_ok": "✓ Everything downloaded successfully",
   "btn_show_logs": "Show logs",

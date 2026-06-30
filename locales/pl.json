@@ -49,6 +49,8 @@
   "btn_back": "Powrót",
   "summary_spot": "Pobrano: %s / %s",
   "summary_failed_hdr": "Nie udało się pobrać (%s):",
+  "report_unknown_item": "Nieznana pozycja",
+  "report_no_detail": "spotdl nie podał szczegółów dla tego utworu",
   "summary_more": "…i jeszcze %s — zobacz „Pokaż logi”",
   "summary_all_ok": "✓ Wszystko pobrano pomyślnie",
   "btn_show_logs": "Pokaż logi",
