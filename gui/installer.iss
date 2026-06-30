@@ -4,7 +4,10 @@
 ; Produces Output/DLMedia-Setup-0.1.0.exe.
 
 #define MyAppName "DLMedia"
-#define MyAppVersion "0.1.0"
+; Version can be overridden by the CI: iscc /DMyAppVersion=1.2.3 gui\installer.iss
+#ifndef MyAppVersion
+  #define MyAppVersion "0.1.0"
+#endif
 #define MyAppPublisher "Marcin Przybysz"
 #define MyAppURL "https://github.com/marprzybysz/dlmedia"
 #define MyAppExeName "DLMedia.exe"
