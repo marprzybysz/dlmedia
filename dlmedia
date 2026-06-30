@@ -480,7 +480,13 @@ for s in data:
     preview)
         if [[ -z "$fetched" ]]; then
             dialog --title "$TITLE" --infobox "${M[info_fetching]}" 5 40
-            info=$(yt-dlp --no-playlist --print "%(title)s\n%(duration_string)s\n%(filesize_approx,filesize)s" "$url" 2>/dev/null)
+            # separate --print flags: yt-dlp puts each on its own physical line.
+            # A single "%(a)s\n%(b)s" print emits a LITERAL \n (not a newline), so the
+            # sed split below would dump everything into v_title and leave size empty.
+            info=$(yt-dlp --no-playlist \
+                --print "%(title)s" \
+                --print "%(duration_string)s" \
+                --print "%(filesize_approx,filesize)s" "$url" 2>/dev/null)
             v_title=$(echo "$info" | sed -n '1p')
             v_duration=$(echo "$info" | sed -n '2p')
             v_size=$(echo "$info" | sed -n '3p')
@@ -497,7 +503,7 @@ for s in data:
             cur_q="$quality"
             [[ -z "$cur_q" ]] && { [[ "$cur_fmt" == "mp4" ]] && cur_q="${DEFAULT_QUALITY:-best}" || cur_q="${DEFAULT_QUALITY:-320}"; }
             dialog --title "$TITLE — ${M[preview_title]}" \
-                --yes-label "${M[btn_download]}" --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
+                --yes-label "${M[btn_download]}" --extra-button --extra-label "${M[btn_step_back]}" --no-label "${M[btn_cancel]}" \
                 --yesno "$(printf "${M[preview_body]}" "$v_title" "$v_duration" "$v_size" "$cur_fmt" "$cur_q")" 12 70
             nav=$(nav_action $?)
         fi
