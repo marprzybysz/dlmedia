@@ -48,8 +48,8 @@ jobs:
       - name: Build app (PyInstaller)
         run: python -m PyInstaller --noconfirm gui\dlmedia.spec
 
-      - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
 
       - name: Derive version from the release tag (v1.2.3 -> 1.2.3)
         id: ver
@@ -59,8 +59,10 @@ jobs:
           $ver = $tag -replace '^v', ''
           "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build installer (Inno Setup)
-        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ steps.ver.outputs.version }} gui\installer.iss'
+      - name: Build installer (NSIS)
+        run: |
+          New-Item -ItemType Directory -Force -Path gui\Output | Out-Null
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" /DMyAppVersion=${{ steps.ver.outputs.version }} gui\installer.nsi
 
       - name: Upload installer as a build artifact
         uses: actions/upload-artifact@v4

@@ -28,7 +28,7 @@ py -m PyInstaller gui\dlmedia.spec
 A PySide6 build bundles a pile of DLLs next to the `.exe`: the **Qt6** libraries
 (`Qt6Core.dll`, `Qt6Gui.dll`, `Qt6Widgets.dll`), the **Python** runtime (`python3xx.dll`),
 the **MSVC runtime**, and Qt **platform plugins** (`platforms\qwindows.dll`). That's why the
-folder is ~40–80 MB. They must ship together with the exe — the Inno Setup script packs the
+folder is ~40–80 MB. They must ship together with the exe — the NSIS installer packs the
 whole `dist\DLMedia\` folder, so the user never sees them.
 
 ### App icon (optional)
@@ -53,11 +53,13 @@ work fully from the bundle.
 
 ## Make the installer (on Windows)
 
-Install [Inno Setup](https://jrsoftware.org/isdl.php), then:
+Install [NSIS](https://nsis.sourceforge.io/) (or `choco install nsis`), then **from the repo
+root** (the script's `File`/`OutFile` paths are root-relative):
 ```powershell
-iscc gui\installer.iss
+makensis gui\installer.nsi            # or: makensis /DMyAppVersion=1.2.3 gui\installer.nsi
 ```
-→ produces `Output\DLMedia-Setup-0.1.0.exe` (bilingual PL/EN installer).
+→ produces `gui\Output\DLMedia-Setup-<version>.exe` (bilingual PL/EN installer; version defaults
+to `0.1.0` when `/DMyAppVersion` is omitted). CI fills the version from the release tag.
 
 **SmartScreen note:** unsigned installers trigger “Windows protected your PC — unknown
 publisher”. It still installs (More info → Run anyway). A code-signing certificate removes the

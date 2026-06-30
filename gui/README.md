@@ -33,5 +33,5 @@ identically to the CLI/TUI. Tests: `python3 tests/test_gui.py` (also run by `bas
 
 ## Packaging (later)
 
-Planned: PyInstaller → single `.exe`, Inno Setup installer, bundle `yt-dlp.exe`/`ffmpeg`,
+Planned: PyInstaller → single `.exe`, NSIS installer, bundle `yt-dlp.exe`/`ffmpeg`,
 ship `locales/` next to the exe (set `DLMEDIA_LOCALES`), and a GitHub-Releases update check.
