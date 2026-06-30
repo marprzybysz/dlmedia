@@ -3,8 +3,9 @@
 ; registers in Add/Remove Programs, and ships a bilingual (PL/EN) wizard.
 ;
 ; Build the app FIRST:  pyinstaller gui/dlmedia.spec   ->  dist/DLMedia/
-; Then, FROM THE REPO ROOT (the File/OutFile paths below are root-relative):
-;   makensis /DMyAppVersion=1.2.3 gui\installer.nsi
+; Then run makensis FROM THIS gui/ DIRECTORY (NSIS resolves File/OutFile relative to
+; the script's own dir, so we cd here to keep paths unambiguous):
+;   cd gui && makensis /DMyAppVersion=1.2.3 installer.nsi
 ; Produces:  gui\Output\DLMedia-Setup-1.2.3.exe
 ; (CI does this on windows-latest — see .github/workflows/build-windows.yml.)
 
@@ -26,7 +27,7 @@ SetCompressor /SOLID lzma
 !define UninstKey      "Software\Microsoft\Windows\CurrentVersion\Uninstall\${MyAppName}"
 
 Name    "${MyAppName} ${MyAppVersion}"
-OutFile "gui\Output\DLMedia-Setup-${MyAppVersion}.exe"
+OutFile "Output\DLMedia-Setup-${MyAppVersion}.exe"
 InstallDir "$PROGRAMFILES64\${MyAppName}"
 InstallDirRegKey HKLM "Software\${MyAppName}" "InstallDir"
 RequestExecutionLevel admin        ; per-machine install into Program Files
@@ -52,7 +53,8 @@ RequestExecutionLevel admin        ; per-machine install into Program Files
 Section "Install"
   SetOutPath "$INSTDIR"
   ; Everything PyInstaller produced (DLMedia.exe + _internal: DLLs, locales, bin).
-  File /r "dist\DLMedia\*"
+  ; Path is relative to this script's dir (gui/), so dist/ in the repo root is ..\dist.
+  File /r "..\dist\DLMedia\*"
 
   CreateShortCut "$SMPROGRAMS\${MyAppName}.lnk" "$INSTDIR\${MyAppExe}"
   CreateShortCut "$DESKTOP\${MyAppName}.lnk"    "$INSTDIR\${MyAppExe}"

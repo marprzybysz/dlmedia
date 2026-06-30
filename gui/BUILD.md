@@ -53,10 +53,11 @@ work fully from the bundle.
 
 ## Make the installer (on Windows)
 
-Install [NSIS](https://nsis.sourceforge.io/) (or `choco install nsis`), then **from the repo
-root** (the script's `File`/`OutFile` paths are root-relative):
+Install [NSIS](https://nsis.sourceforge.io/) (or `choco install nsis`), then run makensis **from
+the `gui/` directory** (NSIS resolves `File`/`OutFile` relative to the script's own dir):
 ```powershell
-makensis gui\installer.nsi            # or: makensis /DMyAppVersion=1.2.3 gui\installer.nsi
+cd gui
+makensis installer.nsi                # or: makensis /DMyAppVersion=1.2.3 installer.nsi
 ```
 → produces `gui\Output\DLMedia-Setup-<version>.exe` (bilingual PL/EN installer; version defaults
 to `0.1.0` when `/DMyAppVersion` is omitted). CI fills the version from the release tag.
