@@ -133,6 +133,10 @@ Covers the non-interactive logic — `build_yt_args`, `cli_main` argument parsin
 - Windows GUI (separate PySide6 app sharing the same `locales/` catalog and download engine).
 - More UI languages — adding one is just a new `locales/<lang>.json`; translations welcome.
 
+## Disclaimer
+
+dlmedia is a personal/educational front-end that orchestrates [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) and [`spotdl`](https://github.com/spotDL/spotify-downloader); it hosts and distributes no media. **Download only content you have the right to** — material you own, that is in the public domain, or that the rights holder permits. You are responsible for complying with the Terms of Service of the source platforms and with the copyright law of your country. The author provides this software "as is", without warranty, and accepts no liability for how it is used. Not affiliated with, endorsed by, or connected to YouTube, Spotify, or SoundCloud.
+
 ## License
 
 [GPL-3.0](LICENSE) — free software; you can redistribute and modify it under the terms of the GNU General Public License v3. "DLMedia" the name/brand is the author's.
