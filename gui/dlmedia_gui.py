@@ -15,13 +15,13 @@ try:
     from PySide6.QtCore import QProcess, Qt
     from PySide6.QtWidgets import (
         QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
-        QMainWindow, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
+        QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
     )
 except ImportError:
     sys.exit("PySide6 is required: pip install -r gui/requirements.txt")
 
 sys.path.insert(0, os.path.dirname(__file__))
-from engine import build_command, is_spotify  # noqa: E402
+from engine import build_command, is_spotify, missing_deps  # noqa: E402
 from i18n import Catalog, available_languages  # noqa: E402
 
 QUALITY = {
@@ -142,6 +142,15 @@ class MainWindow(QMainWindow):
         url = self.url_edit.text().strip()
         if not url:
             self.status.setText(self.cat.t("err_no_url"))
+            return
+        # Mirror the bash check_deps: warn (don't crash) if a needed tool is missing.
+        miss = missing_deps(is_spotify(url))
+        if miss:
+            QMessageBox.warning(
+                self, self.cat.t("deps_title"),
+                "  ✗  " + "\n  ✗  ".join(miss) + "\n\n" + self.cat.t("deps_footer"),
+            )
+            self.status.setText(self.cat.t("deps_title"))
             return
         fmt = self.format_combo.currentText()
         # spotify ignores the mp4/mp3 toggle (audio only)

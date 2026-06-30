@@ -17,7 +17,7 @@ LOCALES = os.path.join(ROOT, "locales")
 sys.path.insert(0, os.path.join(ROOT, "gui"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-from engine import build_command, is_spotify  # noqa: E402
+from engine import build_command, is_spotify, missing_deps  # noqa: E402
 import i18n  # noqa: E402
 from i18n import Catalog, available_languages  # noqa: E402
 from spotdl_filter import filter_file, parse_spec  # noqa: E402
@@ -120,6 +120,22 @@ class TestIsSpotify(unittest.TestCase):
     def test_negative(self):
         self.assertFalse(is_spotify(YT))
         self.assertFalse(is_spotify("https://soundcloud.com/x"))
+
+
+class TestMissingDeps(unittest.TestCase):
+    def test_none_missing(self):
+        self.assertEqual(missing_deps(which=lambda t: "/usr/bin/" + t), [])
+
+    def test_all_missing_no_spotify(self):
+        self.assertEqual(missing_deps(spotify=False, which=lambda t: None), ["yt-dlp", "ffmpeg"])
+
+    def test_spotify_adds_spotdl(self):
+        self.assertEqual(missing_deps(spotify=True, which=lambda t: None),
+                         ["yt-dlp", "ffmpeg", "spotdl"])
+
+    def test_only_ffmpeg_missing(self):
+        which = lambda t: None if t == "ffmpeg" else "/x/" + t  # noqa: E731
+        self.assertEqual(missing_deps(spotify=True, which=which), ["ffmpeg"])
 
 
 class TestCatalog(unittest.TestCase):

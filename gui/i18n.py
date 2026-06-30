@@ -8,13 +8,19 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 
 
 def _locales_dir() -> str:
-    # Override for packaged builds (e.g. PyInstaller bundles locales next to the exe).
+    # Explicit override wins (tests, custom installs).
     env = os.environ.get("DLMEDIA_LOCALES")
     if env:
         return env
+    # PyInstaller bundle: locales are shipped inside the unpacked bundle dir.
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return os.path.join(base, "locales")
+    # Running from source: ../locales next to gui/.
     return os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "locales"))
 
 

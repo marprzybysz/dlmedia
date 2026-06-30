@@ -7,9 +7,19 @@ that's what lets the GUI run on native Windows. Mirrors the bash `build_yt_args`
 """
 from __future__ import annotations
 
+import shutil
+
 
 def is_spotify(url: str) -> bool:
     return "open.spotify.com" in url or "spotify.link" in url
+
+
+def missing_deps(spotify: bool = False, which=shutil.which) -> list[str]:
+    """External tools required but not found on PATH. Mirrors the bash check_deps:
+    yt-dlp + ffmpeg are always needed; spotdl only for Spotify. `which` is injectable
+    so the check is unit-testable without touching the real PATH."""
+    needed = ["yt-dlp", "ffmpeg"] + (["spotdl"] if spotify else [])
+    return [tool for tool in needed if which(tool) is None]
 
 
 def build_command(url: str, fmt: str = "mp4", quality: str = "", out: str = ".") -> list[str]:
