@@ -107,8 +107,8 @@ PY
 )
 eq "all locales same keys, all used (bash + gui)" "$parity" "OK"
 
-section "GUI core — engine + i18n (python, no Qt)"
-if python3 "$HERE/test_gui.py"; then ((pass++)); else ((fail++)); fi
+section "python suite (engine / i18n / spotdl_filter — cross-platform, no Qt)"
+if python3 -m unittest discover -s "$HERE" -p 'test_*.py'; then ((pass++)); else ((fail++)); fi
 
 echo
 echo "═══ $pass passed, $fail failed ═══"

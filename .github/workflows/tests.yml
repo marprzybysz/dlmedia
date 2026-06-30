@@ -5,23 +5,35 @@ on:
   pull_request:
 
 jobs:
-  test:
+  # Linux-only: the bash TUI/CLI logic (dialog/bash are unix) + cross-frontend
+  # locale parity. Runs the python suite too (via discovery) for a full local-style run.
+  bash-suite:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-
-      # The suite only needs bash + python3 (+ coreutils/awk, already present):
-      # it sources dlmedia with DLMEDIA_LIB=1 (functions only, no dialog/stdbuf)
-      # and stubs yt-dlp/spotdl. No TUI is exercised.
-      - name: Run test suite
+      - name: Full TUI suite (bash + python)
         run: bash tests/run.sh
-
       - name: Lint shell script
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y shellcheck
           shellcheck -S warning dlmedia || true
+
+  # Cross-platform: the OS-agnostic python core (engine / i18n / spotdl_filter),
+  # validated on Windows + macOS + Linux — catches per-OS paths (tool_path .exe, os.path.join).
+  python-suite:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Cross-platform python tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
