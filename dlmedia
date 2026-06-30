@@ -314,7 +314,7 @@ while true; do   # ── TASK LOOP: re-entry on new URL / Anuluj / Wstecz-from-
 
 # URL screen: OK→start; Cancel-label "Exit"/ESC→quit; no Back. Field starts EMPTY —
 # coming back here (Powrót/Anuluj/Wstecz) you usually want a fresh link, not to edit the old one.
-url=$(dialog --title "$TITLE" --cancel-label "Exit" --inputbox "${M[url_prompt]}" 10 70 "" 3>&1 1>&2 2>&3) || exit 0
+url=$(dialog --title "$TITLE" --cancel-label "${M[btn_exit]}" --inputbox "${M[url_prompt]}" 10 70 "" 3>&1 1>&2 2>&3) || exit 0
 [[ -z "$url" ]] && continue
 
 if [[ "$url" == *"open.spotify.com"* || "$url" == *"spotify.link"* ]]; then
@@ -633,11 +633,11 @@ max_h=$(($(tput lines) - 2)); h=$((body_lines + 9)); [[ $h -gt $max_h ]] && h=$m
 while :; do
     if [[ "${nfail:-0}" -gt 0 ]]; then
         dialog --title "$TITLE — ${M[summary_title]}" \
-            --yes-label "${M[btn_back]}" --extra-button --extra-label "${M[btn_show_logs]}" --no-label "Exit" --defaultno \
+            --yes-label "${M[btn_back]}" --extra-button --extra-label "${M[btn_show_logs]}" --no-label "${M[btn_exit]}" --defaultno \
             --yesno "$summary" "$h" "$summary_w"
     else
         dialog --title "$TITLE — ${M[summary_title]}" \
-            --yes-label "${M[btn_back]}" --no-label "Exit" --defaultno \
+            --yes-label "${M[btn_back]}" --no-label "${M[btn_exit]}" --defaultno \
             --yesno "$summary" "$h" "$summary_w"
     fi
     case "$(nav_action $?)" in

@@ -53,6 +53,7 @@
   "summary_all_ok": "✓ Wszystko pobrano pomyślnie",
   "btn_show_logs": "Pokaż logi",
   "btn_close": "Zamknij",
+  "btn_exit": "Wyjdź",
   "logs_title": "Błędy",
   "pl_fetching": "Pobieram listę filmów...",
   "err_pl_list": "Nie udało się pobrać listy filmów",

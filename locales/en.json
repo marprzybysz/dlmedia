@@ -53,6 +53,7 @@
   "summary_all_ok": "✓ Everything downloaded successfully",
   "btn_show_logs": "Show logs",
   "btn_close": "Close",
+  "btn_exit": "Exit",
   "logs_title": "Errors",
   "pl_fetching": "Fetching video list...",
   "err_pl_list": "Could not fetch the video list",
