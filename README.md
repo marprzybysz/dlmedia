@@ -133,6 +133,10 @@ Covers the non-interactive logic — `build_yt_args`, `cli_main` argument parsin
 - Windows GUI (separate PySide6 app sharing the same `locales/` catalog and download engine).
 - More UI languages — adding one is just a new `locales/<lang>.json`; translations welcome.
 
+## License
+
+[GPL-3.0](LICENSE) — free software; you can redistribute and modify it under the terms of the GNU General Public License v3. "DLMedia" the name/brand is the author's.
+
 ## Author
 
 Marcin Przybysz ([@marprzybysz](https://github.com/marprzybysz))
