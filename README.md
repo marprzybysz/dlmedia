@@ -126,6 +126,17 @@ Covers the non-interactive logic — `build_yt_args`, `cli_main` argument parsin
 | `ASK_QUALITY` | `true` \| `false` | Prompt for quality each time |
 | `PLAYLIST_SUBFOLDERS` | `true` \| `false` | Create a subfolder per playlist/album |
 
+## Translations
+
+The UI is multilingual — Polish and English ship today, and **adding a language is just one JSON file** (no code changes). To add, say, Spanish:
+
+```bash
+cp locales/en.json locales/es.json     # then translate the values (keep the keys!)
+python3 tools/check_locales.py         # lists any missing/extra keys per language
+```
+
+`check_locales.py` reports each locale's coverage against English (e.g. `es.json 78/80 ✗ missing: btn_exit, logs_title`). The test suite enforces the same parity in CI, so an incomplete translation fails the build. The app auto-detects every `locales/*.json` and offers it in the setup wizard's language menu. PRs with new languages welcome. 🌍
+
 ## Roadmap
 
 - ✅ Non-interactive CLI mode (`--url … --format mp3 --quality 320`).

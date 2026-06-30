@@ -74,13 +74,13 @@ class TestLocaleFiles(unittest.TestCase):
         self.assertIn("en", langs)
 
     def test_all_languages_have_identical_keys(self):
-        base = None
+        en = set(self._load("en"))
         for lang in available_languages():
             keys = set(self._load(lang))
-            if base is None:
-                base = keys
-            else:
-                self.assertEqual(keys, base, f"{lang}.json key set differs")
+            self.assertEqual(
+                keys, en,
+                f"{lang}.json differs from en — missing={sorted(en - keys)} extra={sorted(keys - en)}",
+            )
 
     def test_every_file_is_valid_json(self):
         for lang in available_languages():
