@@ -172,6 +172,18 @@ EOF
         14 65
 }
 
+# Human-friendly file size: bytes -> "23.4 MB" / "1.50 GB" (1024-based, friendly labels).
+# Non-numeric input passes through unchanged (e.g. yt-dlp's "NA").
+human_size() {
+    local b="$1"
+    [[ "$b" =~ ^[0-9]+$ ]] || { printf '%s' "$b"; return; }
+    if [[ "$b" -ge 1073741824 ]]; then
+        awk -v b="$b" 'BEGIN{printf "%.2f GB", b/1073741824}'
+    else
+        awk -v b="$b" 'BEGIN{printf "%.1f MB", b/1048576}'
+    fi
+}
+
 # Build yt-dlp format/quality flags into the global `args` array. Shared by TUI + CLI
 # so the selector logic lives in one place.
 build_yt_args() {
@@ -349,7 +361,7 @@ for s in data:
     fi
     fail_lines=$(echo "$failed" | wc -l)
     [[ -z "$failed" ]] && fail_lines=0
-    dialog --title "$TITLE — ${M[summary_title]}" --yes-label "${M[btn_back]}" --no-label "Exit" \
+    dialog --title "$TITLE — ${M[summary_title]}" --yes-label "${M[btn_back]}" --no-label "Exit" --defaultno \
         --yesno "$summary" $((fail_lines + 10)) 70 && continue || exit 0
 fi
 
@@ -435,7 +447,7 @@ if [[ "$is_playlist" == false ]]; then
     v_duration=$(echo "$info" | sed -n '2p')
     v_size=$(echo "$info" | sed -n '3p')
 
-    [[ "$v_size" == "NA" || -z "$v_size" ]] && v_size="${M[size_unknown]}" || v_size=$(numfmt --to=iec "$v_size" 2>/dev/null || echo "$v_size")
+    [[ "$v_size" == "NA" || -z "$v_size" ]] && v_size="${M[size_unknown]}" || v_size=$(human_size "$v_size")
 
     dialog --title "$TITLE — ${M[preview_title]}" --yes-label "${M[btn_download]}" --no-label "${M[btn_cancel]}" --yesno \
         "$(printf "${M[preview_body]}" "$v_title" "$v_duration" "$v_size" "$format" "$quality")" \
@@ -487,7 +499,7 @@ else
 fi
 fail_lines=$(echo "$failed" | wc -l)
 [[ -z "$failed" ]] && fail_lines=0
-dialog --title "$TITLE — ${M[summary_title]}" --yes-label "${M[btn_back]}" --no-label "Exit" \
+dialog --title "$TITLE — ${M[summary_title]}" --yes-label "${M[btn_back]}" --no-label "Exit" --defaultno \
     --yesno "$summary" $((fail_lines + 10)) 80 && continue || exit 0
 
 done

@@ -43,6 +43,14 @@ build_yt_args mp4 2160; eq  "mp4/4K not mp4-capped" "$([[ "${args[*]}" != *'[ext
 build_yt_args mp3 320;  eq "mp3/320"    "${args[*]}" "-x --audio-format mp3 --audio-quality 320K"
 build_yt_args mp3 128;  eq "mp3/128"    "${args[*]}" "-x --audio-format mp3 --audio-quality 128K"
 
+section "human_size (bytes -> MB/GB)"
+eq "1 MiB"          "$(human_size 1048576)"    "1.0 MB"
+eq "5 MiB"          "$(human_size 5242880)"    "5.0 MB"
+eq "just under 1GB" "$(human_size 1073741823)" "1024.0 MB"
+eq "1 GiB"          "$(human_size 1073741824)" "1.00 GB"
+eq "1.5 GiB"        "$(human_size 1610612736)" "1.50 GB"
+eq "NA passthrough" "$(human_size NA)"         "NA"
+
 section "cli_main — validation (run in subshell; die calls exit)"
 UI_LANG=en load_lang
 out=$(cli_main --format mp3 2>&1);                     eq "no --url exits 1" "$?" "1"; has "  message" "$out" "No URL"
