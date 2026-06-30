@@ -83,6 +83,7 @@ URL dispatch is string-matching, not validation:
 - **Overwrite detection scope:** only check the playlist subfolder (via `list_name`/`pl_name`), not the whole `DOWNLOAD_DIR`, or unrelated files trigger the overwrite prompt.
 - **Skip-existing differs by tool:** yt-dlp uses `--download-archive "$DOWNLOAD_DIR/.ytdl-archive"`; spotdl uses `--skip-existing`.
 - **Custom-path textbox starts empty** (not pre-filled with `$(whoami)`): WSL user `marprzybysz` ≠ Windows folder `Marcin`, which caused permission-denied.
+- **Recoverable vs critical errors:** inside the task loop, recoverable problems (bad/dead URL, can't fetch playlist/tracks, spotdl missing for a Spotify URL) show a `dialog --msgbox` then return to the URL prompt (`continue`, or `nav="cancel"` in a step) — never `die`. `die` (plain text + exit) is only for **critical/startup** failures (pre-flight deps, missing locale). The URL inputbox starts **empty** (no `$url` init) — coming back you usually want a fresh link.
 - **No auto-update:** never update yt-dlp on normal runs; only via `./dlmedia --update`.
 - **ASK_FORMAT / ASK_QUALITY must stay:** users need to pick "zawsze pytaj" in setup and toggle these. Removing them is a hard no.
 

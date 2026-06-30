@@ -29,6 +29,7 @@
   "lbl_no": "no",
   "url_prompt": "Paste URL (YouTube / Spotify / SoundCloud):",
   "err_no_url": "No URL provided",
+  "err_url": "Couldn't read that link — is the URL correct?",
   "err_spotdl": "spotdl not found — install: pipx install spotdl",
   "audio_quality_q": "Audio quality:",
   "q320": "320 kbps (best)",

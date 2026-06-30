@@ -312,13 +312,16 @@ check_deps
 
 while true; do   # ── TASK LOOP: re-entry on new URL / Anuluj / Wstecz-from-first ──
 
-# URL screen: OK→start; Cancel-label "Exit"/ESC→quit; no Back. Field pre-filled
-# with the last URL so Anuluj/Wstecz drop you back here to edit it.
-url=$(dialog --title "$TITLE" --cancel-label "Exit" --inputbox "${M[url_prompt]}" 10 70 "${url:-}" 3>&1 1>&2 2>&3) || exit 0
+# URL screen: OK→start; Cancel-label "Exit"/ESC→quit; no Back. Field starts EMPTY —
+# coming back here (Powrót/Anuluj/Wstecz) you usually want a fresh link, not to edit the old one.
+url=$(dialog --title "$TITLE" --cancel-label "Exit" --inputbox "${M[url_prompt]}" 10 70 "" 3>&1 1>&2 2>&3) || exit 0
 [[ -z "$url" ]] && continue
 
 if [[ "$url" == *"open.spotify.com"* || "$url" == *"spotify.link"* ]]; then
-    command -v spotdl >/dev/null || die "${M[err_spotdl]}"
+    if ! command -v spotdl >/dev/null; then     # recoverable → dialog, back to URL (stay in app)
+        dialog --title "$TITLE" --msgbox "${M[err_spotdl]}" 7 60
+        continue
+    fi
     branch="spotify"
 elif [[ "$url" == *"list="* || "$url" == *"/playlist"* || "$url" == *"/sets/"* ]]; then
     branch="ytlist"
@@ -473,16 +476,23 @@ for s in data:
             v_title=$(echo "$info" | sed -n '1p')
             v_duration=$(echo "$info" | sed -n '2p')
             v_size=$(echo "$info" | sed -n '3p')
-            [[ "$v_size" == "NA" || -z "$v_size" ]] && v_size="${M[size_unknown]}" || v_size=$(human_size "$v_size")
-            fetched=1
+            if [[ -z "$v_title" ]]; then    # yt-dlp couldn't resolve it → bad/dead URL
+                dialog --title "$TITLE" --msgbox "${M[err_url]}" 7 60
+                nav="cancel"
+            else
+                [[ "$v_size" == "NA" || -z "$v_size" ]] && v_size="${M[size_unknown]}" || v_size=$(human_size "$v_size")
+                fetched=1
+            fi
         fi
-        cur_fmt="${format:-${DEFAULT_FORMAT:-mp4}}"
-        cur_q="$quality"
-        [[ -z "$cur_q" ]] && { [[ "$cur_fmt" == "mp4" ]] && cur_q="${DEFAULT_QUALITY:-best}" || cur_q="${DEFAULT_QUALITY:-320}"; }
-        dialog --title "$TITLE — ${M[preview_title]}" \
-            --yes-label "${M[btn_download]}" --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
-            --yesno "$(printf "${M[preview_body]}" "$v_title" "$v_duration" "$v_size" "$cur_fmt" "$cur_q")" 12 70
-        nav=$(nav_action $?)
+        if [[ -z "$nav" ]]; then
+            cur_fmt="${format:-${DEFAULT_FORMAT:-mp4}}"
+            cur_q="$quality"
+            [[ -z "$cur_q" ]] && { [[ "$cur_fmt" == "mp4" ]] && cur_q="${DEFAULT_QUALITY:-best}" || cur_q="${DEFAULT_QUALITY:-320}"; }
+            dialog --title "$TITLE — ${M[preview_title]}" \
+                --yes-label "${M[btn_download]}" --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
+                --yesno "$(printf "${M[preview_body]}" "$v_title" "$v_duration" "$v_size" "$cur_fmt" "$cur_q")" 12 70
+            nav=$(nav_action $?)
+        fi
         ;;
 
     esac
