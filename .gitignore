@@ -4,3 +4,9 @@ dlmedia.conf
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Bundled tool binaries (downloaded by gui/fetch-tools.ps1) and build output
+gui/bin/
+build/
+dist/
+*.spec.bak

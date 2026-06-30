@@ -36,10 +36,20 @@ Convert `assets/dlmedia.svg` → `assets/dlmedia.ico` (e.g. ImageMagick:
 `magick assets/dlmedia.svg -define icon:auto-resize=256,64,48,32,16 assets/dlmedia.ico`).
 The spec picks it up automatically if present.
 
-### Bundling yt-dlp / ffmpeg (optional)
-By default the app finds `yt-dlp`/`ffmpeg` on PATH and warns if missing (`missing_deps`).
-To ship them inside the app, drop `yt-dlp.exe` / `ffmpeg.exe` in `gui/bin/` and uncomment the
-`binaries` lines in `gui/dlmedia.spec`.
+### Bundling yt-dlp / ffmpeg (recommended — self-contained app)
+So the user installs and clicks with **nothing else to set up**, ship the tools inside the app.
+On Windows, before building:
+```powershell
+.\gui\fetch-tools.ps1
+```
+This downloads `yt-dlp.exe` + `ffmpeg.exe`/`ffprobe.exe` into `gui/bin/` (git-ignored). The spec
+auto-bundles `gui/bin/` into `_internal/bin`, and the app uses them automatically
+(`engine.tool_path`, `--ffmpeg-location`). If `gui/bin/` is empty, the app falls back to PATH and
+just **warns** when a tool is missing (`missing_deps`).
+
+**Spotify:** `spotdl` is a Python package (no single `.exe`), so it isn't auto-bundled — for
+Spotify support, `pipx install spotdl` on the target (the app finds it on PATH). YouTube/SoundCloud
+work fully from the bundle.
 
 ## Make the installer (on Windows)
 

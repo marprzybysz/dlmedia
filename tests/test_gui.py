@@ -17,7 +17,7 @@ LOCALES = os.path.join(ROOT, "locales")
 sys.path.insert(0, os.path.join(ROOT, "gui"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-from engine import build_command, is_spotify, missing_deps  # noqa: E402
+from engine import build_command, is_spotify, missing_deps, tool_path  # noqa: E402
 import i18n  # noqa: E402
 from i18n import Catalog, available_languages  # noqa: E402
 from spotdl_filter import filter_file, parse_spec  # noqa: E402
@@ -120,6 +120,37 @@ class TestIsSpotify(unittest.TestCase):
     def test_negative(self):
         self.assertFalse(is_spotify(YT))
         self.assertFalse(is_spotify("https://soundcloud.com/x"))
+
+
+class TestBundledTools(unittest.TestCase):
+    def _suffix(self):
+        return ".exe" if os.name == "nt" else ""
+
+    def test_tool_path_falls_back_to_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(tool_path("yt-dlp", tools_dir=d), "yt-dlp")
+
+    def test_tool_path_uses_bundled(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "yt-dlp" + self._suffix())
+            open(p, "w").close()
+            self.assertEqual(tool_path("yt-dlp", tools_dir=d), p)
+
+    def test_build_command_uses_bundled_tools_and_ffmpeg_location(self):
+        with tempfile.TemporaryDirectory() as d:
+            suf = self._suffix()
+            for t in ("yt-dlp", "ffmpeg"):
+                open(os.path.join(d, t + suf), "w").close()
+            cmd = build_command("https://youtu.be/x", "mp4", "best", "/o", tools_dir=d)
+            self.assertTrue(cmd[0].endswith("yt-dlp" + suf))
+            self.assertIn("--ffmpeg-location", cmd)
+
+    def test_missing_deps_sees_bundled(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "yt-dlp" + self._suffix()), "w").close()
+            open(os.path.join(d, "ffmpeg" + self._suffix()), "w").close()
+            # nothing on PATH, but both bundled → none missing
+            self.assertEqual(missing_deps(spotify=False, which=lambda t: None, tools_dir=d), [])
 
 
 class TestMissingDeps(unittest.TestCase):
