@@ -37,6 +37,7 @@
   "spot_no_pick": "Nie wybrano żadnego utworu",
   "btn_download": "Pobierz",
   "btn_cancel": "Anuluj",
+  "btn_step_back": "Wstecz",
   "ow_q": "Znaleziono wcześniej pobrane pliki:",
   "ow_skip": "Pomiń istniejące (pobierz brakujące)",
   "ow_overwrite": "Nadpisz wszystko",

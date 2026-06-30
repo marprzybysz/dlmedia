@@ -54,7 +54,9 @@ The whole script is one file, read top to bottom:
 
 1. **Defs** — `die()`, `require_tui()`, `load_lang()`, `check_deps()`, `run_setup()`, `build_yt_args()`, `cli_main()`. After the defs, a `DLMEDIA_LIB=1` hook (`[[ -n "${DLMEDIA_LIB:-}" ]] && return 0`) lets tests source the functions without running the app. `SCRIPT_DIR` uses `${BASH_SOURCE[0]}` (not `$0`) so locale loading works when sourced.
 2. **Config load** — defaults set as plain vars, then `dlmedia.conf` is `source`d over them (conf overrides defaults). Arg dispatch (`case "${1:-}"`): `--url` → `cli_main "$@"` (non-interactive, exits); `--update`/`--setup`/`--help` handled here and exit. No conf → mandatory `run_setup`.
-3. **Main `while true` loop** — `require_tui` (checks `dialog`/`stdbuf`) then prompt URL → dispatch by URL pattern → download → summary screen with "Powrót" (`continue`, back to URL) or "Exit" (`exit 0`).
+3. **Main `while true` task loop** — `require_tui`, then per task: prompt URL → detect `branch` (single/ytlist/spotify) → `build_steps` produces the ordered decision-screen list → an **inner index loop** runs each screen (`spotchecklist`/`spotquality`/`checklist`/`format`/`quality`/`preview`). Each screen maps its `dialog` exit code via `nav_action` to **next** (i+1) / **back** (i-1; Wstecz = `--extra-button`) / **cancel** (i=-1 → re-prompt URL) / **exit** (ESC → `exit 0`). When all steps pass → finalize (overwrite check + download + summary). Summary: "Powrót" (`continue`) or "Exit", `--defaultno`.
+
+Navigation contract: **Wstecz** = one screen back; **Anuluj** = abandon task, back to URL (field pre-filled with `$url`); **Exit/ESC** = quit. Picks live in shell vars (`format`/`quality`/`yt_sel`/`spot_sel`) so back-nav shows them again (`--default-item`, `sel_state` for checklists). Menu steps commit to their var **only on `next`** (else Back/Anuluj would wipe the remembered pick). Metadata fetch is cached per-URL via `$fetched`/`$last_url` (don't re-hit the network on every Back).
 
 `cli_main` and the TUI share `build_yt_args(format, quality)` (sets the global `args` array) so the yt-dlp selector logic lives in one place. `require_tui` is called lazily (top of `run_setup`, before the main loop) — never globally — so CLI mode runs without `dialog`/`stdbuf`.
 
@@ -66,7 +68,7 @@ URL dispatch is string-matching, not validation:
 ## `dialog` idioms (copy exactly)
 
 - **Result capture:** every interactive `dialog` uses `3>&1 1>&2 2>&3` to get the selection onto stdout into `$(...)`. dialog draws UI to stderr, writes the result to fd 3.
-- **Cancel handling:** prompts end with `|| exit 0` (Cancel/Esc) or `|| die "..."`. Never omit this — it traps the user.
+- **Cancel handling:** the **URL screen** and **summary** still use the old `|| exit 0` (Cancel-label "Exit"). **Decision screens use the step machine instead** (`nav_action $?` → next/back/cancel/exit) — do NOT add `|| exit 0` there, it'd break Wstecz/Anuluj. Add `--extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}"` to any new decision screen and route via `nav_action`.
 - **Dynamic sizing:** list dialogs compute height from item count, clamped to `$(tput lines) - 4` (`max_h`/`box_h`/`menu_h`). Reuse for any new scrollable list.
 - **Download phase = `--programbox`:** `stdbuf -oL <tool> ... 2>&1 | tee "$log" | dialog --programbox`. `stdbuf -oL` (+ yt-dlp `--newline`) forces line-buffering so output streams live; `tee` keeps a log for the summary. Never use raw `tput` scroll output — the user rejected it as "surowe".
 

@@ -37,6 +37,7 @@
   "spot_no_pick": "No track selected",
   "btn_download": "Download",
   "btn_cancel": "Cancel",
+  "btn_step_back": "Back",
   "ow_q": "Found previously downloaded files:",
   "ow_skip": "Skip existing (download missing)",
   "ow_overwrite": "Overwrite everything",

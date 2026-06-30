@@ -184,6 +184,44 @@ human_size() {
     fi
 }
 
+# Map a dialog exit code to a navigation action (for the step-machine main loop).
+# dialog returns: OK=0, Cancel=1, Extra(=Back)=3, ESC=255.
+nav_action() {
+    case "$1" in
+        0) echo next ;;
+        3) echo back ;;
+        1) echo cancel ;;
+        *) echo exit ;;
+    esac
+}
+
+# Ordered decision-screen list for a task, given branch + ASK_FORMAT/ASK_QUALITY.
+# Skips format/quality when their ASK flag isn't "true" (Spotify always asks quality).
+# Pure/echo-only → unit-tested.
+build_steps() {
+    local branch="$1" ask_format="$2" ask_quality="$3" s
+    local list=() out=()
+    case "$branch" in
+        single)  list=(format quality preview) ;;
+        ytlist)  list=(checklist format quality) ;;
+        spotify) list=(spotchecklist spotquality) ;;
+    esac
+    for s in "${list[@]}"; do
+        [[ "$s" == "format"  && "$ask_format"  != "true" ]] && continue
+        [[ "$s" == "quality" && "$ask_quality" != "true" ]] && continue
+        out+=("$s")
+    done
+    echo "${out[@]}"
+}
+
+# Checklist state for item $1 given a saved CSV selection $2. Empty CSV = all ON
+# (first visit). Lets a checklist remember what was ticked when you navigate Back.
+sel_state() {
+    local n="$1" csv="$2"
+    [[ -z "$csv" ]] && { echo ON; return; }
+    case ",$csv," in *",$n,"*) echo ON ;; *) echo OFF ;; esac
+}
+
 # Build yt-dlp format/quality flags into the global `args` array. Shared by TUI + CLI
 # so the selector logic lives in one place.
 build_yt_args() {
@@ -272,63 +310,208 @@ fi
 require_tui
 check_deps
 
-while true; do
+while true; do   # ── TASK LOOP: re-entry on new URL / Anuluj / Wstecz-from-first ──
 
-url=$(dialog --title "$TITLE" --cancel-label "Exit" --inputbox "${M[url_prompt]}" 10 70 3>&1 1>&2 2>&3) || exit 0
-[[ -z "$url" ]] && die "${M[err_no_url]}"
+# URL screen: OK→start; Cancel-label "Exit"/ESC→quit; no Back. Field pre-filled
+# with the last URL so Anuluj/Wstecz drop you back here to edit it.
+url=$(dialog --title "$TITLE" --cancel-label "Exit" --inputbox "${M[url_prompt]}" 10 70 "${url:-}" 3>&1 1>&2 2>&3) || exit 0
+[[ -z "$url" ]] && continue
 
 if [[ "$url" == *"open.spotify.com"* || "$url" == *"spotify.link"* ]]; then
     command -v spotdl >/dev/null || die "${M[err_spotdl]}"
+    branch="spotify"
+elif [[ "$url" == *"list="* || "$url" == *"/playlist"* || "$url" == *"/sets/"* ]]; then
+    branch="ytlist"
+else
+    branch="single"
+fi
 
-    quality=$(dialog --title "$TITLE — Spotify" --menu "${M[audio_quality_q]}" 14 50 3 \
-        "320" "${M[q320]}" \
-        "192" "192 kbps" \
-        "128" "128 kbps" \
-        3>&1 1>&2 2>&3) || exit 0
+# New URL → forget remembered picks + cached metadata (cache is keyed by URL).
+if [[ "$url" != "${last_url:-}" ]]; then
+    last_url="$url"; fetched=""; format=""; quality=""; yt_sel=""; spot_sel=""
+    playlist_args=()
+fi
 
-    dialog --title "$TITLE" --infobox "${M[spot_fetching]}" 5 50
-    spot_save="/tmp/dlmedia_spot_$$.spotdl"
-    spotdl save "$url" --save-file "$spot_save" >/dev/null 2>&1
-    mapfile -t spot_tracks < <(python3 -c "
+# Decision screens as an ordered, index-navigable list (Wstecz=back, Anuluj/ESC handled below).
+read -ra steps <<< "$(build_steps "$branch" "$ASK_FORMAT" "$ASK_QUALITY")"
+i=0
+while [[ $i -ge 0 && $i -lt ${#steps[@]} ]]; do
+    nav=""
+    case "${steps[$i]}" in
+
+    spotchecklist)
+        if [[ -z "$fetched" ]]; then        # fetch once per URL (cache via $fetched/$last_url)
+            dialog --title "$TITLE" --infobox "${M[spot_fetching]}" 5 50
+            spot_save="/tmp/dlmedia_spot_$$.spotdl"
+            spotdl save "$url" --save-file "$spot_save" >/dev/null 2>&1
+            mapfile -t spot_tracks < <(python3 -c "
 import json,sys
 data=json.load(open('$spot_save'))
 for s in data:
     print(f\"{s['artist']} - {s['name']}\")
 " 2>/dev/null)
-    spot_count=${#spot_tracks[@]}
+            spot_count=${#spot_tracks[@]}
+            if [[ $spot_count -eq 0 ]]; then
+                rm -f "$spot_save"
+                dialog --title "$TITLE" --msgbox "${M[err_spot_list]}" 7 50
+                nav="cancel"
+            else
+                fetched=1
+            fi
+        fi
+        if [[ -z "$nav" ]]; then
+            checklist_args=()
+            for n in "${!spot_tracks[@]}"; do
+                checklist_args+=("$((n+1))" "${spot_tracks[$n]}" "$(sel_state "$((n+1))" "$spot_sel")")
+            done
+            max_h=$(($(tput lines) - 4))
+            box_h=$((spot_count + 8)); [[ $box_h -gt $max_h ]] && box_h=$max_h
+            list_h=$((box_h - 6)); [[ $list_h -lt 4 ]] && list_h=4
+            picked=$(dialog --title "$TITLE — Spotify ($spot_count ${M[word_tracks]})" \
+                --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
+                --checklist "${M[checklist_hint]}" $box_h 74 $list_h \
+                "${checklist_args[@]}" 3>&1 1>&2 2>&3)
+            nav=$(nav_action $?)
+            if [[ "$nav" == "next" ]]; then
+                if [[ -z "$picked" ]]; then
+                    dialog --title "$TITLE" --msgbox "${M[spot_no_pick]}" 7 50; nav="stay"
+                else
+                    spot_sel=$(echo "$picked" | tr -d '"' | tr ' ' ',')
+                fi
+            fi
+        fi
+        ;;
 
-    if [[ $spot_count -eq 0 ]]; then
-        rm -f "$spot_save"
-        die "${M[err_spot_list]}"
-    fi
+    spotquality)
+        sel=$(dialog --title "$TITLE — Spotify" --default-item "${quality:-320}" \
+            --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
+            --menu "${M[audio_quality_q]}" 14 50 3 \
+            "320" "${M[q320]}" \
+            "192" "192 kbps" \
+            "128" "128 kbps" 3>&1 1>&2 2>&3)
+        nav=$(nav_action $?)
+        [[ "$nav" == "next" ]] && quality="$sel"
+        ;;
 
-    # menuconfig-style: one checklist, every track pre-selected (ON).
-    # OK without changes = whole album/playlist (from URL); uncheck to exclude.
-    checklist_args=()
-    for i in "${!spot_tracks[@]}"; do
-        checklist_args+=("$((i+1))" "${spot_tracks[$i]}" "ON")
-    done
-    max_h=$(($(tput lines) - 4))
-    box_h=$((spot_count + 8)); [[ $box_h -gt $max_h ]] && box_h=$max_h
-    list_h=$((box_h - 6)); [[ $list_h -lt 4 ]] && list_h=4
-    picked=$(dialog --title "$TITLE — Spotify ($spot_count ${M[word_tracks]})" \
-        --checklist "${M[checklist_hint]}" $box_h 74 $list_h \
-        "${checklist_args[@]}" 3>&1 1>&2 2>&3) || exit 0
-    [[ -z "$picked" ]] && { rm -f "$spot_save"; die "${M[spot_no_pick]}"; }
-    spec=$(echo "$picked" | tr -d '"' | tr ' ' ',')
+    checklist)
+        if [[ -z "$fetched" ]]; then
+            dialog --title "$TITLE" --infobox "${M[pl_fetching]}" 5 40
+            mapfile -t titles < <(yt-dlp --flat-playlist --print "%(playlist_index)s. %(title)s" "$url" 2>/dev/null)
+            count=${#titles[@]}
+            if [[ $count -eq 0 ]]; then
+                dialog --title "$TITLE" --msgbox "${M[err_pl_list]}" 7 50
+                nav="cancel"
+            else
+                fetched=1
+            fi
+        fi
+        if [[ -z "$nav" ]]; then
+            checklist_args=()
+            for t in "${titles[@]}"; do
+                num="${t%%.*}"; name="${t#*. }"
+                checklist_args+=("$num" "$name" "$(sel_state "$num" "$yt_sel")")
+            done
+            max_h=$(($(tput lines) - 4))
+            box_h=$((count + 8)); [[ $box_h -gt $max_h ]] && box_h=$max_h
+            list_h=$((box_h - 6)); [[ $list_h -lt 4 ]] && list_h=4
+            picked=$(dialog --title "$TITLE — ${M[playlist]} ($count ${M[word_videos]})" \
+                --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
+                --checklist "${M[checklist_hint]}" $box_h 74 $list_h \
+                "${checklist_args[@]}" 3>&1 1>&2 2>&3)
+            nav=$(nav_action $?)
+            if [[ "$nav" == "next" ]]; then
+                if [[ -z "$picked" ]]; then
+                    dialog --title "$TITLE" --msgbox "${M[err_no_pick]}" 7 50; nav="stay"
+                else
+                    yt_sel=$(echo "$picked" | tr -d '"' | tr ' ' ',')
+                    playlist_args=(--yes-playlist --playlist-items "$yt_sel")
+                fi
+            fi
+        fi
+        ;;
 
-    # All selected → download from the URL (well-tested path); a subset → filter the
-    # already-fetched metadata into a smaller .spotdl that spotdl reads back.
+    format)
+        sel=$(dialog --title "$TITLE" --default-item "${format:-mp3}" \
+            --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
+            --menu "${M[format_q]}" 12 40 2 \
+            "mp3" "${M[opt_audio]}" \
+            "mp4" "${M[opt_video]}" 3>&1 1>&2 2>&3)
+        nav=$(nav_action $?)
+        [[ "$nav" == "next" ]] && format="$sel"   # keep prior pick on Back/Anuluj
+        ;;
+
+    quality)
+        cur_fmt="${format:-${DEFAULT_FORMAT:-mp4}}"
+        if [[ "$cur_fmt" == "mp4" ]]; then
+            sel=$(dialog --title "$TITLE" --default-item "${quality:-best}" \
+                --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
+                --menu "${M[video_quality_q]}" 19 52 8 \
+                "best" "${M[opt_best]}" \
+                "4320" "4320p (8K)" \
+                "2160" "2160p (4K)" \
+                "1440" "1440p (2K)" \
+                "1080" "1080p (Full HD)" \
+                "720" "720p (HD)" \
+                "480" "480p (SD)" \
+                "360" "360p" 3>&1 1>&2 2>&3)
+        else
+            sel=$(dialog --title "$TITLE" --default-item "${quality:-320}" \
+                --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
+                --menu "${M[audio_quality_q]}" 14 50 3 \
+                "320" "${M[q320]}" \
+                "192" "192 kbps" \
+                "128" "128 kbps" 3>&1 1>&2 2>&3)
+        fi
+        nav=$(nav_action $?)
+        [[ "$nav" == "next" ]] && quality="$sel"
+        ;;
+
+    preview)
+        if [[ -z "$fetched" ]]; then
+            dialog --title "$TITLE" --infobox "${M[info_fetching]}" 5 40
+            info=$(yt-dlp --no-playlist --print "%(title)s\n%(duration_string)s\n%(filesize_approx,filesize)s" "$url" 2>/dev/null)
+            v_title=$(echo "$info" | sed -n '1p')
+            v_duration=$(echo "$info" | sed -n '2p')
+            v_size=$(echo "$info" | sed -n '3p')
+            [[ "$v_size" == "NA" || -z "$v_size" ]] && v_size="${M[size_unknown]}" || v_size=$(human_size "$v_size")
+            fetched=1
+        fi
+        cur_fmt="${format:-${DEFAULT_FORMAT:-mp4}}"
+        cur_q="$quality"
+        [[ -z "$cur_q" ]] && { [[ "$cur_fmt" == "mp4" ]] && cur_q="${DEFAULT_QUALITY:-best}" || cur_q="${DEFAULT_QUALITY:-320}"; }
+        dialog --title "$TITLE — ${M[preview_title]}" \
+            --yes-label "${M[btn_download]}" --extra-button --extra-label "${M[btn_step_back]}" --cancel-label "${M[btn_cancel]}" \
+            --yesno "$(printf "${M[preview_body]}" "$v_title" "$v_duration" "$v_size" "$cur_fmt" "$cur_q")" 12 70
+        nav=$(nav_action $?)
+        ;;
+
+    esac
+
+    case "$nav" in
+        next)   i=$((i+1)) ;;
+        back)   i=$((i-1)) ;;       # i=-1 on first step → handled as "back to URL" below
+        stay)   : ;;                # validation failed → redisplay same step
+        cancel) i=-1 ;;
+        exit)   rm -f "${spot_save:-}"; exit 0 ;;
+        *)      i=-1 ;;
+    esac
+done
+
+# Wstecz-from-first / Anuluj / fetch error → re-prompt URL (link still in the field).
+# Reset last_url so re-entering the same link re-fetches (we just deleted spot_save).
+[[ $i -lt 0 ]] && { rm -f "${spot_save:-}"; last_url=""; continue; }
+
+# ── all decision steps passed → finalize + download + summary ──
+if [[ "$branch" == "spotify" ]]; then
     spot_picked="/tmp/dlmedia_spot_picked_$$.spotdl"
-    IFS=',' read -ra _sel <<< "$spec"; sel_count=${#_sel[@]}
+    IFS=',' read -ra _sel <<< "$spot_sel"; sel_count=${#_sel[@]}
     if [[ "$sel_count" -ge "$spot_count" ]]; then
         spot_query="$url"
     else
-        spot_count=$(python3 "$SCRIPT_DIR/tools/spotdl_filter.py" "$spot_save" "$spec" "$spot_picked" 2>/dev/null)
-        [[ -z "$spot_count" || "$spot_count" -eq 0 ]] && { rm -f "$spot_save" "$spot_picked"; die "${M[err_spot_list]}"; }
-        spot_query="$spot_picked"
+        new_count=$(python3 "$SCRIPT_DIR/tools/spotdl_filter.py" "$spot_save" "$spot_sel" "$spot_picked" 2>/dev/null)
+        [[ -z "$new_count" || "$new_count" -eq 0 ]] && { rm -f "$spot_save" "$spot_picked"; dialog --title "$TITLE" --msgbox "${M[err_spot_list]}" 7 50; continue; }
+        spot_count="$new_count"; spot_query="$spot_picked"
     fi
-
     overwrite_args=()
     if [[ "$PLAYLIST_SUBFOLDERS" == true ]]; then
         spot_output="${DOWNLOAD_DIR}/{list-name}/{artist} - {title}"
@@ -336,170 +519,77 @@ for s in data:
         spot_output="${DOWNLOAD_DIR}/{artist} - {title}"
     fi
     list_name=$(python3 -c "import json; data=json.load(open('$spot_save')); print(data[0].get('list_name',''))" 2>/dev/null)
-    spot_subdir="${DOWNLOAD_DIR}/${list_name}"
-    existing=$(find "$spot_subdir" -name "*.mp3" 2>/dev/null | head -1)
+    existing=$(find "${DOWNLOAD_DIR}/${list_name}" -name "*.mp3" 2>/dev/null | head -1)
     if [[ -n "$list_name" && -n "$existing" ]]; then
-        ow_mode=$(dialog --title "$TITLE" --menu "${M[ow_q]}" 12 55 2 \
-            "skip"      "${M[ow_skip]}" \
-            "overwrite" "${M[ow_overwrite]}" \
-            3>&1 1>&2 2>&3) || exit 0
-        [[ "$ow_mode" == "skip" ]] && overwrite_args=(--skip-existing)
+        ow_mode=$(dialog --title "$TITLE" --cancel-label "${M[btn_cancel]}" --menu "${M[ow_q]}" 12 55 2 \
+            "skip" "${M[ow_skip]}" \
+            "overwrite" "${M[ow_overwrite]}" 3>&1 1>&2 2>&3)
+        if [[ "$(nav_action $?)" == "next" ]]; then
+            [[ "$ow_mode" == "skip" ]] && overwrite_args=(--skip-existing)
+        else
+            rm -f "$spot_save" "$spot_picked"; continue
+        fi
     fi
-
     log="/tmp/dlmedia_spot_$$.log"
-    stdbuf -oL spotdl "${overwrite_args[@]}" --bitrate "${quality}k" --output "$spot_output" "$spot_query" 2>&1 | tee "$log" | dialog --title "$TITLE — ${M[downloading]} ($spot_count ${M[word_tracks]})" --programbox 20 78
-
+    stdbuf -oL spotdl "${overwrite_args[@]}" --bitrate "${quality:-320}k" --output "$spot_output" "$spot_query" 2>&1 | tee "$log" | dialog --title "$TITLE — ${M[downloading]} ($spot_count ${M[word_tracks]})" --programbox 20 78
     failed=$(grep -i "error\|failed\|skipping" "$log" | grep -iv "skipping.*existing" || true)
     downloaded=$(grep -c "^Downloaded" "$log" || echo 0)
     rm -f "$log" "$spot_save" "$spot_picked"
-
     summary="$(printf "${M[summary_spot]}" "$downloaded" "$spot_count")"
-    if [[ -n "$failed" ]]; then
-        summary+="\n\n${M[summary_failed_hdr]}\n$failed"
-    else
-        summary+="\n\n${M[summary_all_ok]}"
-    fi
-    fail_lines=$(echo "$failed" | wc -l)
-    [[ -z "$failed" ]] && fail_lines=0
-    dialog --title "$TITLE — ${M[summary_title]}" --yes-label "${M[btn_back]}" --no-label "Exit" --defaultno \
-        --yesno "$summary" $((fail_lines + 10)) 70 && continue || exit 0
-fi
-
-playlist_args=()
-if [[ "$url" == *"list="* || "$url" == *"/playlist"* || "$url" == *"/sets/"* ]]; then
-    dialog --title "$TITLE" --infobox "${M[pl_fetching]}" 5 40
-    mapfile -t titles < <(yt-dlp --flat-playlist --print "%(playlist_index)s. %(title)s" "$url" 2>/dev/null)
-    count=${#titles[@]}
-
-    if [[ $count -eq 0 ]]; then
-        die "${M[err_pl_list]}"
-    fi
-
-    # menuconfig-style: one checklist, everything pre-selected (ON).
-    # OK without changes = whole playlist; uncheck to exclude videos.
-    checklist_args=()
-    for t in "${titles[@]}"; do
-        num="${t%%.*}"
-        name="${t#*. }"
-        checklist_args+=("$num" "$name" "ON")
-    done
-    max_h=$(($(tput lines) - 4))
-    box_h=$((count + 8)); [[ $box_h -gt $max_h ]] && box_h=$max_h
-    list_h=$((box_h - 6)); [[ $list_h -lt 4 ]] && list_h=4
-    picked=$(dialog --title "$TITLE — ${M[playlist]} ($count ${M[word_videos]})" \
-        --checklist "${M[checklist_hint]}" $box_h 74 $list_h \
-        "${checklist_args[@]}" \
-        3>&1 1>&2 2>&3) || exit 0
-    [[ -z "$picked" ]] && die "${M[err_no_pick]}"
-    items=$(echo "$picked" | tr -d '"' | tr ' ' ',')
-    playlist_args=(--yes-playlist --playlist-items "$items")
-fi
-
-if [[ "$ASK_FORMAT" == true ]]; then
-    # Cursor starts on mp3 (audio first) — the user still picks; this only sets
-    # the highlighted item, not the actual default format.
-    format=$(dialog --title "$TITLE" --default-item "mp3" --menu "${M[format_q]}" 12 40 2 \
-        "mp3" "${M[opt_audio]}" \
-        "mp4" "${M[opt_video]}" \
-        3>&1 1>&2 2>&3) || exit 0
+    summary_w=70
 else
-    format="${DEFAULT_FORMAT:-mp4}"
-fi
-
-if [[ "$format" == "mp4" ]]; then
-    if [[ "$ASK_QUALITY" == true ]]; then
-        quality=$(dialog --title "$TITLE" --default-item "${DEFAULT_QUALITY:-best}" --menu "${M[video_quality_q]}" 19 52 8 \
-            "best"  "${M[opt_best]}" \
-            "4320"  "4320p (8K)" \
-            "2160"  "2160p (4K)" \
-            "1440"  "1440p (2K)" \
-            "1080"  "1080p (Full HD)" \
-            "720"   "720p (HD)" \
-            "480"   "480p (SD)" \
-            "360"   "360p" \
-            3>&1 1>&2 2>&3) || exit 0
-    else
-        quality="${DEFAULT_QUALITY:-best}"
+    format="${format:-${DEFAULT_FORMAT:-mp4}}"
+    if [[ -z "$quality" ]]; then
+        [[ "$format" == "mp4" ]] && quality="${DEFAULT_QUALITY:-best}" || quality="${DEFAULT_QUALITY:-320}"
     fi
-else
-    if [[ "$ASK_QUALITY" == true ]]; then
-        quality=$(dialog --title "$TITLE" --default-item "${DEFAULT_QUALITY:-320}" --menu "${M[audio_quality_q]}" 14 50 3 \
-            "320" "${M[q320]}" \
-            "192" "192 kbps" \
-            "128" "128 kbps" \
-            3>&1 1>&2 2>&3) || exit 0
-    else
-        quality="${DEFAULT_QUALITY:-320}"
-    fi
-fi
+    build_yt_args "$format" "$quality"
 
-build_yt_args "$format" "$quality"
-
-is_playlist=false
-if [[ ${#playlist_args[@]} -gt 0 && "${playlist_args[0]}" != "--no-playlist" ]]; then
-    is_playlist=true
-fi
-
-if [[ "$is_playlist" == false ]]; then
-    dialog --title "$TITLE" --infobox "${M[info_fetching]}" 5 40
-    info=$(yt-dlp --no-playlist --print "%(title)s\n%(duration_string)s\n%(filesize_approx,filesize)s" "$url" 2>/dev/null)
-    v_title=$(echo "$info" | sed -n '1p')
-    v_duration=$(echo "$info" | sed -n '2p')
-    v_size=$(echo "$info" | sed -n '3p')
-
-    [[ "$v_size" == "NA" || -z "$v_size" ]] && v_size="${M[size_unknown]}" || v_size=$(human_size "$v_size")
-
-    dialog --title "$TITLE — ${M[preview_title]}" --yes-label "${M[btn_download]}" --no-label "${M[btn_cancel]}" --yesno \
-        "$(printf "${M[preview_body]}" "$v_title" "$v_duration" "$v_size" "$format" "$quality")" \
-        12 70 3>&1 1>&2 2>&3 || exit 0
-fi
-
-if [[ "$is_playlist" == true ]]; then
-    if [[ "$PLAYLIST_SUBFOLDERS" == true ]]; then
-        output="${DOWNLOAD_DIR}/%(playlist_title)s/%(title)s.%(ext)s"
+    ow_mode=""
+    if [[ "$branch" == "ytlist" ]]; then
+        if [[ "$PLAYLIST_SUBFOLDERS" == true ]]; then
+            output="${DOWNLOAD_DIR}/%(playlist_title)s/%(title)s.%(ext)s"
+        else
+            output="${DOWNLOAD_DIR}/%(title)s.%(ext)s"
+        fi
+        pl_name=$(yt-dlp --flat-playlist --print "%(playlist_title)s" "$url" 2>/dev/null | head -1)
+        existing=$(find "${DOWNLOAD_DIR}/${pl_name}" -name "*.mp4" -o -name "*.mp3" 2>/dev/null | head -1)
+        if [[ -n "$pl_name" && -n "$existing" ]]; then
+            ow_mode=$(dialog --title "$TITLE" --cancel-label "${M[btn_cancel]}" --menu "${M[ow_q]}" 12 55 2 \
+                "skip" "${M[ow_skip]}" \
+                "overwrite" "${M[ow_overwrite]}" 3>&1 1>&2 2>&3)
+            [[ "$(nav_action $?)" != "next" ]] && continue
+        fi
     else
         output="${DOWNLOAD_DIR}/%(title)s.%(ext)s"
     fi
-    pl_name=$(yt-dlp --flat-playlist --print "%(playlist_title)s" "$url" 2>/dev/null | head -1)
-    pl_subdir="${DOWNLOAD_DIR}/${pl_name}"
-    existing=$(find "$pl_subdir" -name "*.mp4" -o -name "*.mp3" 2>/dev/null | head -1)
-    if [[ -n "$pl_name" && -n "$existing" ]]; then
-        ow_mode=$(dialog --title "$TITLE" --menu "${M[ow_q]}" 12 55 2 \
-            "skip"      "${M[ow_skip]}" \
-            "overwrite" "${M[ow_overwrite]}" \
-            3>&1 1>&2 2>&3) || exit 0
-    fi
-else
-    output="${DOWNLOAD_DIR}/%(title)s.%(ext)s"
+
+    yt_extra_args=()
+    [[ "$ow_mode" == "skip" ]] && yt_extra_args=(--download-archive "${DOWNLOAD_DIR}/.ytdl-archive")
+
+    log="/tmp/dlmedia_yt_$$.log"
+    dl_title="${M[downloading]}"
+    [[ "$branch" == "ytlist" ]] && dl_title="${M[downloading]} (${count:-} ${M[word_videos]})"
+    stdbuf -oL yt-dlp --newline "${playlist_args[@]}" "${args[@]}" "${yt_extra_args[@]}" -o "$output" "$url" 2>&1 | tee "$log" | dialog --title "$TITLE — $dl_title" --programbox 20 78
+    failed=$(grep -iE "ERROR:|unable to download" "$log" || true)
+    downloaded=$(grep -c "\[download\] Destination:" "$log" 2>/dev/null || true)
+    skipped=$(grep -c "has already been recorded" "$log" 2>/dev/null || true)
+    [[ -z "$downloaded" ]] && downloaded=0
+    [[ -z "$skipped" ]] && skipped=0
+    rm -f "$log"
+    summary="$(printf "${M[summary_yt]}" "$downloaded" "$skipped")"
+    summary_w=80
 fi
 
-yt_extra_args=()
-if [[ "${ow_mode:-}" == "skip" ]]; then
-    yt_extra_args=(--download-archive "${DOWNLOAD_DIR}/.ytdl-archive")
-fi
-
-log="/tmp/dlmedia_yt_$$.log"
-dl_title="${M[downloading]}"
-[[ "$is_playlist" == true ]] && dl_title="${M[downloading]} (${count:-} ${M[word_videos]})"
-
-stdbuf -oL yt-dlp --newline "${playlist_args[@]}" "${args[@]}" "${yt_extra_args[@]}" -o "$output" "$url" 2>&1 | tee "$log" | dialog --title "$TITLE — $dl_title" --programbox 20 78
-
-failed=$(grep -iE "ERROR:|unable to download" "$log" || true)
-downloaded=$(grep -c "\[download\] Destination:" "$log" 2>/dev/null || true)
-skipped=$(grep -c "has already been recorded" "$log" 2>/dev/null || true)
-[[ -z "$downloaded" ]] && downloaded=0
-[[ -z "$skipped" ]] && skipped=0
-rm -f "$log"
-
-summary="$(printf "${M[summary_yt]}" "$downloaded" "$skipped")"
-if [[ -n "$failed" ]]; then
+if [[ -n "${failed:-}" ]]; then
     summary+="\n\n${M[summary_failed_hdr]}\n$failed"
 else
     summary+="\n\n${M[summary_all_ok]}"
 fi
 fail_lines=$(echo "$failed" | wc -l)
 [[ -z "$failed" ]] && fail_lines=0
+# Download finished → invalidate cache so re-running the same URL re-fetches.
+last_url=""
 dialog --title "$TITLE — ${M[summary_title]}" --yes-label "${M[btn_back]}" --no-label "Exit" --defaultno \
-    --yesno "$summary" $((fail_lines + 10)) 80 && continue || exit 0
+    --yesno "$summary" $((fail_lines + 10)) "$summary_w" && continue || exit 0
 
 done
