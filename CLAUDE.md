@@ -75,6 +75,7 @@ URL dispatch is string-matching, not validation:
 ## Gotchas (don't reintroduce)
 
 - **Summaries are parsed from the log**, not exit codes. yt-dlp: `grep -c "\[download\] Destination:"` and `"has already been recorded"`, errors via `grep -iE "ERROR:|unable to download"`. spotdl: counts `^Downloaded`, greps `error|failed|skipping`. If you change tool flags/versions, re-verify these patterns match real output.
+- **Per-item failure report:** the summary's failed-item list + "Pokaż logi" page come from `tools/dl_report.py` (shared, unit-tested). yt-dlp pairs reliably via the video **id** (present in both the playlist listing — captured as `id\ttitle` in `yt_ids_file` — and the `ERROR: [ext] <id>:` line); spotdl is best-effort (tracks not seen as `Downloaded`). Counts (downloaded/skipped) are still grep'd from the log. If yt-dlp/spotdl output format changes, re-check `dl_report.py` patterns + its fixtures.
 - **`grep -c` double-zero:** `grep -c` prints "0" *and* exits 1; `|| echo 0` then appends a second "0". Use `|| true` plus an empty-check (`[[ -z … ]] && x=0`).
 - **spotdl stdout leak:** suppress metadata fetch with `>/dev/null 2>&1` (not just `2>/dev/null`) or "Processing query..." bleeds above the dialog.
 - **spotdl has no `--list`:** get track metadata via `spotdl save --save-file <json>`, parse with inline `python3`.
