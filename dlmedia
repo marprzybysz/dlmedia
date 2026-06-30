@@ -399,7 +399,15 @@ for s in data:
     checklist)
         if [[ -z "$fetched" ]]; then
             dialog --title "$TITLE" --infobox "${M[pl_fetching]}" 5 40
-            mapfile -t titles < <(yt-dlp --flat-playlist --print "%(playlist_index)s. %(title)s" "$url" 2>/dev/null)
+            # Capture id + "index. title" (two --print lines per item) so the failure
+            # report can pair an ERROR's video id back to its title. yt_ids_file = id<TAB>title.
+            mapfile -t _raw < <(yt-dlp --flat-playlist --print "%(id)s" --print "%(playlist_index)s. %(title)s" "$url" 2>/dev/null)
+            yt_ids_file="/tmp/dlmedia_ytids_$$.tsv"; : > "$yt_ids_file"
+            titles=()
+            for ((_k=0; _k+1 < ${#_raw[@]}; _k+=2)); do
+                printf '%s\t%s\n' "${_raw[_k]}" "${_raw[_k+1]}" >> "$yt_ids_file"
+                titles+=("${_raw[_k+1]}")
+            done
             count=${#titles[@]}
             if [[ $count -eq 0 ]]; then
                 dialog --title "$TITLE" --msgbox "${M[err_pl_list]}" 7 50
@@ -542,9 +550,19 @@ if [[ "$branch" == "spotify" ]]; then
     fi
     log="/tmp/dlmedia_spot_$$.log"
     stdbuf -oL spotdl "${overwrite_args[@]}" --bitrate "${quality:-320}k" --output "$spot_output" "$spot_query" 2>&1 | tee "$log" | dialog --title "$TITLE — ${M[downloading]} ($spot_count ${M[word_tracks]})" --programbox 20 78
-    failed=$(grep -i "error\|failed\|skipping" "$log" | grep -iv "skipping.*existing" || true)
     downloaded=$(grep -c "^Downloaded" "$log" || echo 0)
-    rm -f "$log" "$spot_save" "$spot_picked"
+    # Per-item failure report over the attempted tracks (selected subset, or all).
+    attempted=()
+    if [[ "$spot_query" == "$url" ]]; then
+        attempted=("${spot_tracks[@]}")
+    else
+        IFS=',' read -ra _sel <<< "$spot_sel"
+        for _n in "${_sel[@]}"; do attempted+=("${spot_tracks[$((_n-1))]}"); done
+    fi
+    tracks_file="/tmp/dlmedia_tracks_$$.txt"; printf '%s\n' "${attempted[@]}" > "$tracks_file"
+    report_file="/tmp/dlmedia_report_$$.txt"
+    nfail=$(python3 "$SCRIPT_DIR/tools/dl_report.py" spot "$log" "$tracks_file" "$report_file" 2>/dev/null); [[ -z "$nfail" ]] && nfail=0
+    rm -f "$log" "$spot_save" "$spot_picked" "$tracks_file"
     summary="$(printf "${M[summary_spot]}" "$downloaded" "$spot_count")"
     summary_w=70
 else
@@ -580,26 +598,56 @@ else
     dl_title="${M[downloading]}"
     [[ "$branch" == "ytlist" ]] && dl_title="${M[downloading]} (${count:-} ${M[word_videos]})"
     stdbuf -oL yt-dlp --newline "${playlist_args[@]}" "${args[@]}" "${yt_extra_args[@]}" -o "$output" "$url" 2>&1 | tee "$log" | dialog --title "$TITLE — $dl_title" --programbox 20 78
-    failed=$(grep -iE "ERROR:|unable to download" "$log" || true)
     downloaded=$(grep -c "\[download\] Destination:" "$log" 2>/dev/null || true)
     skipped=$(grep -c "has already been recorded" "$log" 2>/dev/null || true)
     [[ -z "$downloaded" ]] && downloaded=0
     [[ -z "$skipped" ]] && skipped=0
+    report_file="/tmp/dlmedia_report_$$.txt"
+    nfail=$(python3 "$SCRIPT_DIR/tools/dl_report.py" yt "$log" "${yt_ids_file:-/dev/null}" "$report_file" 2>/dev/null); [[ -z "$nfail" ]] && nfail=0
     rm -f "$log"
     summary="$(printf "${M[summary_yt]}" "$downloaded" "$skipped")"
     summary_w=80
 fi
 
-if [[ -n "${failed:-}" ]]; then
-    summary+="\n\n${M[summary_failed_hdr]}\n$failed"
+# Summary body: success line, or a short ✗ list of failed items (full "title → error"
+# detail is behind "Pokaż logi", which reads $report_file built by tools/dl_report.py).
+body_lines=1
+if [[ "${nfail:-0}" -gt 0 ]]; then
+    summary+="\n\n$(printf "${M[summary_failed_hdr]}" "$nfail")"
+    short=$(grep -v '^   ' "$report_file" 2>/dev/null | grep -v '^[[:space:]]*$' | head -10)
+    nshort=$(printf '%s' "$short" | grep -c .)
+    while IFS= read -r _h; do [[ -n "$_h" ]] && summary+="\n  ✗ $_h"; done <<< "$short"
+    body_lines=$((nshort + 2))
+    if [[ "$nfail" -gt "$nshort" ]]; then
+        summary+="\n  $(printf "${M[summary_more]}" "$((nfail - nshort))")"
+        body_lines=$((body_lines + 1))
+    fi
 else
     summary+="\n\n${M[summary_all_ok]}"
 fi
-fail_lines=$(echo "$failed" | wc -l)
-[[ -z "$failed" ]] && fail_lines=0
+
 # Download finished → invalidate cache so re-running the same URL re-fetches.
 last_url=""
-dialog --title "$TITLE — ${M[summary_title]}" --yes-label "${M[btn_back]}" --no-label "Exit" --defaultno \
-    --yesno "$summary" $((fail_lines + 10)) "$summary_w" && continue || exit 0
+# Summary screen: Powrót (→URL) / Pokaż logi (→error page) / Exit. Loop so the log view returns here.
+max_h=$(($(tput lines) - 2)); h=$((body_lines + 9)); [[ $h -gt $max_h ]] && h=$max_h
+while :; do
+    if [[ "${nfail:-0}" -gt 0 ]]; then
+        dialog --title "$TITLE — ${M[summary_title]}" \
+            --yes-label "${M[btn_back]}" --extra-button --extra-label "${M[btn_show_logs]}" --no-label "Exit" --defaultno \
+            --yesno "$summary" "$h" "$summary_w"
+    else
+        dialog --title "$TITLE — ${M[summary_title]}" \
+            --yes-label "${M[btn_back]}" --no-label "Exit" --defaultno \
+            --yesno "$summary" "$h" "$summary_w"
+    fi
+    case "$(nav_action $?)" in
+        next) break ;;                                   # Powrót → re-prompt URL
+        back) dialog --title "$TITLE — ${M[logs_title]}" --exit-label "${M[btn_close]}" \
+                  --textbox "$report_file" "$max_h" 78 ;;   # Pokaż logi; Enter/Esc → back to summary
+        *)    rm -f "${report_file:-}" "${yt_ids_file:-}"; exit 0 ;;   # Exit / Esc
+    esac
+done
+rm -f "${report_file:-}" "${yt_ids_file:-}"; yt_ids_file=""
+continue
 
 done
