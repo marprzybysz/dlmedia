@@ -80,5 +80,10 @@
   "gui_ready": "Ready",
   "gui_done": "Done",
   "gui_error": "Error",
+  "gui_settings": "Settings",
+  "gui_version": "Version",
+  "gui_author": "Author",
+  "gui_repo": "Repository",
+  "gui_license": "License",
   "help": "Usage:\n  dlmedia                                            interactive TUI\n  dlmedia --url <URL> [--format mp3|mp4] [--quality <Q>] [--out <DIR>] [--lang pl|en]\n  dlmedia --setup | --update | --help"
 }
